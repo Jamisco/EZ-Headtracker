@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "EZ HeadTracker": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    }
+  }
+}

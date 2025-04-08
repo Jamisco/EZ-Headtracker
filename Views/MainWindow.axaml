@@ -1,0 +1,67 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:EZ_HeadTracker.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="EZ_HeadTracker.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="EZ_Headtracker"
+		xmlns:views="clr-namespace:EZ_HeadTracker.Views"
+>
+
+	<Design.DataContext>
+		<!-- This only sets the DataContext for the previewer in an IDE,
+             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+		<vm:MainWindowViewModel/>
+	</Design.DataContext>
+
+	<Grid Background="Gray">
+		
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="*" MinWidth="500" />
+			<ColumnDefinition Width="*" />
+		</Grid.ColumnDefinitions>
+
+
+		<DockPanel x:Name="UniversalPanel" Grid.Column="0"  >
+
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,5">
+
+				<Grid>
+					
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="Auto"  />
+						<ColumnDefinition Width="*"  />
+					</Grid.ColumnDefinitions>
+					
+					<Button Background="Green" Content="Center Head" Grid.Column="0"/>
+
+					<StackPanel Background="Red" Grid.Column="1" Margin="0,0,10,0" HorizontalAlignment="Right" Width="300">
+						
+						<views:SliderUserControl x:Name="MultiplierSlider"/>
+						<views:SliderUserControl x:Name="SmootherSlider"/>
+						
+					</StackPanel>
+					
+				</Grid>
+				
+            </DockPanel>
+
+			<DockPanel x:Name="TransformationPanel"
+						Grid.Column="0" Grid.Row="1">
+
+				<views:TransformationUserControl x:Name="TransformationUserControl"/>
+
+			</DockPanel>
+			
+
+		</DockPanel>
+
+		<DockPanel Background="Green" Grid.Column="1">
+			<TextBlock Text="Right Side Text"  HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="30" />
+		</DockPanel>
+		
+	</Grid>
+</Window>

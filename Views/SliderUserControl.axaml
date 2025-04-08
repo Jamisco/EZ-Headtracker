@@ -1,0 +1,78 @@
+<UserControl xmlns="https://github.com/avaloniaui"  
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"  
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"  
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"  
+             xmlns:vm="clr-namespace:EZ_HeadTracker.ViewModels"  
+             mc:Ignorable="d" d:DesignWidth="250"  
+             x:Class="EZ_HeadTracker.Views.SliderUserControl"
+			 
+			 Padding="0,-10"
+			 
+			 >  
+
+        <Grid VerticalAlignment="Top" MinWidth="250" MinHeight="50">  
+			
+            <Grid.ColumnDefinitions>  
+                <ColumnDefinition Width="Auto"/>  
+                <!-- Label -->  
+                <ColumnDefinition Width=".1*"/>  
+                <!-- Minus button -->  
+                <ColumnDefinition Width=".4*"/>  
+                <!-- Slider -->  
+                <ColumnDefinition Width=".1*"/>  
+                <!-- Plus button -->  
+                <ColumnDefinition Width="Auto"/>  
+                <!-- TextBox -->  
+            </Grid.ColumnDefinitions>  
+
+            <Label x:Name="txtLabel" 
+				   Content="Text Here" VerticalAlignment="Center" 
+				   Grid.Column="0"  
+                   MinWidth="0"  
+				   FontSize="20"
+            />  
+
+            <Button x:Name="minusBtn"  
+                    Content="−"  
+                    MinWidth="0"  
+                    MinHeight="0"  
+                    HorizontalAlignment="Center"  
+                    VerticalAlignment="Center"  
+                    Grid.Column="1"   
+                    Padding="2,-5"  
+                    Margin="0"
+					FontSize="25"/>  
+
+            <Slider x:Name="slider"  
+                        MinWidth="0"  
+                        HorizontalAlignment="Stretch"  
+                        VerticalAlignment="Center"  
+                        Padding="0"  
+                        Grid.Column="2"/>  
+
+            <Button x:Name="plusBtn"  
+                        Content="+"  
+                        MinWidth="0"  
+                        HorizontalAlignment="Center"  
+                        VerticalAlignment="Center"  
+                        Grid.Column="3"  
+                        Padding="2,-5"  
+                        Margin="0"
+					    FontSize="25"/>  
+
+            <!-- TextBox -->  
+            <TextBox x:Name="txtBox"  
+                    Text="9.9"  
+					FontSize="20"
+                    MinWidth="0"  
+                    MinHeight="0"  
+                    VerticalAlignment="Center"  
+                    HorizontalAlignment="Left"  
+                    Grid.Column="4"  
+                    Padding="0"  
+                    IsReadOnly="True" Margin="0"  
+                    BorderThickness=".5"/>  
+
+        </Grid>  
+
+</UserControl>
