@@ -19,9 +19,19 @@ namespace EZ_HeadTracker.Hardware
         public const int FRAMEHEIGHT = 480;
         public const int CaptureFps = 30;
 
-        private bool isTracking;
+        public bool IsTracking;
         private bool SHOWGRAY = false;
-        Task initTask;
+        public Task InitiatingTracking;
+
+        public event EventHandler<HeadPoseEventArgs> HeadPoseUpdated;
+        public event EventHandler<HeadPoseEventArgs> HeadPoseLost;
+
+
+        /// <summary>
+        /// All the transformations that can be done to the head pose.
+        /// It is important to note that the order of the transformations matters for various purposes throughout the entire program 
+        /// </summary>
+        public enum TransformationType { Pitch, Yaw, Roll, X, Y, Z };
 
         public TransformationData currentData;
         public struct TransformationData
@@ -33,6 +43,8 @@ namespace EZ_HeadTracker.Hardware
             public float X;
             public float Y;
             public float Z;
+
+            public float[] DataArray => new float[] { Pitch, Yaw, Roll, X, Y, Z };
 
             public TransformationData(Point3f rotation, Point3f translation)
             {
@@ -66,7 +78,7 @@ namespace EZ_HeadTracker.Hardware
 
         private async void InitializeCameraAsync(int cameraIndex)
         {
-            initTask = Task.Run(() =>
+            InitiatingTracking = Task.Run(() =>
             {
                 // use videocapture any to select best api for platform, might take a while thought
                 capture = new VideoCapture(cameraIndex, VideoCaptureAPIs.DSHOW);
@@ -101,7 +113,7 @@ namespace EZ_HeadTracker.Hardware
 
         public void StartTracking()
         {
-            isTracking = true;
+            IsTracking = true;
 
             currentData = new TransformationData();
             trackingThread = new Thread(TrackingLoop);
@@ -112,7 +124,7 @@ namespace EZ_HeadTracker.Hardware
         public int frameCount = 0;
         public void CenterFrame()
         {
-            PoseTransformation.ClearOffsets();
+            PoseTransformation.ResetOffsets();
         }
 
         string frameName = "Tracking Frame";
@@ -120,7 +132,7 @@ namespace EZ_HeadTracker.Hardware
         {
             Mat prevFrame = new Mat();
             // calibration frame completed, now we simply need to show the calibration points as we are calibrating or just skip straight to calculation
-            while (isTracking)
+            while (IsTracking)
             {
                 capture.Read(Frame);
 
@@ -145,8 +157,12 @@ namespace EZ_HeadTracker.Hardware
                         prevShape = curShape;
                         curShape = trap;
                     }
+                }
+                
 
-
+                if(curShape == null)
+                {
+                    continue;
                 }
 
                 curShape.ShowCurrentShape(displayFrame, printStartPos);
@@ -158,10 +174,10 @@ namespace EZ_HeadTracker.Hardware
                 }
 
                 ShowHeadPose(displayFrame);
-                ShowFrameCounter(displayFrame);
 
                 if(SHOWGRAY)
                 {
+                    ShowFrameCounter(displayFrame);
                     Cv2.NamedWindow(frameName);
                     Cv2.SetWindowProperty(frameName, WindowPropertyFlags.AspectRatio, 5);
                     Cv2.ImShow(frameName, displayFrame);
@@ -408,8 +424,12 @@ namespace EZ_HeadTracker.Hardware
                 Cv2.PutText(displayFrame, "Translation: " + t2.R2P(),
                     start + step * count++, HersheyFonts.HersheyPlain, 1, Scalar.White);
 
-                currentData = new TransformationData(r2, t2);   
-                DataBridge.SendData2OpenTrack(r2, t2);
+                currentData = new TransformationData(r2, t2);
+
+                // Raise event
+                HeadPoseUpdated?.Invoke(this, new HeadPoseEventArgs(currentData));
+
+                //DataBridge.SendData2OpenTrack(r2, t2);
             }
             catch (Exception ex)
             {
@@ -420,7 +440,7 @@ namespace EZ_HeadTracker.Hardware
 
         public void StopTracking()
         {
-            isTracking = false;
+            IsTracking = false;
             if (trackingThread != null && trackingThread.IsAlive)
             {
                 trackingThread.Join();  // Wait for the thread to finish
@@ -431,6 +451,16 @@ namespace EZ_HeadTracker.Hardware
             StopTracking();
             Frame.Release();
             capture.Release();
+        }
+
+        public class HeadPoseEventArgs : EventArgs
+        {
+            public TransformationData Data { get; }
+
+            public HeadPoseEventArgs(TransformationData data)
+            {
+                Data = data;
+            }
         }
     }
 }

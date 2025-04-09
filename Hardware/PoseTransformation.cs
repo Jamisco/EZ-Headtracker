@@ -281,7 +281,7 @@ namespace EZ_HeadTracker.Hardware
                 (float)tvec.Get<double>(2, 0)
             );
         }
-        public static void ClearOffsets()
+        public static void ResetOffsets()
         {
             ResetPrediction();
             SetPrediction();

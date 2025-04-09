@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using EZ_HeadTracker.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using static EZ_HeadTracker.Hardware.HeadTracker;
 
@@ -24,7 +25,6 @@ namespace EZ_HeadTracker.Views
             get => MainWndow.FindControl<DockPanel>("TransformationPanel")!;
         }
 
-        private Task headTrackerData;
 
         private bool InvertValue => InvertBox.IsChecked == true;
         private bool ShowPitch => PitchBox.IsChecked == true;
@@ -34,7 +34,33 @@ namespace EZ_HeadTracker.Views
         private bool ShowY => YBox.IsChecked == true;
         private bool ShowZ => ZBox.IsChecked == true;
 
+        /// <summary>
+        /// Convienient array to check which shapes to show
+        /// </summary>
+        private bool[] CanShowShape =>
+        [
+            ShowPitch,
+            ShowYaw,
+            ShowRoll,
+            ShowX,
+            ShowY,
+            ShowZ
+        ];
 
+        private Color[] TransformColors { get; } = new Color[]
+        {
+           Colors.Red,
+           Colors.Green,
+           Colors.Blue,
+           Colors.Red,
+           Colors.Green,
+           Colors.Blue,
+        };
+
+
+        // Fix for CS1525, CS1002, CS1519, and CS8124 errors
+        public TransformationType SelectedType => (TransformationType)TransformListBox.SelectedIndex;
+        public int SelectedIndex => TransformListBox.SelectedIndex;
 
         public TransformationUserControl()
         {
@@ -48,6 +74,7 @@ namespace EZ_HeadTracker.Views
                 GraphCanvas.PointerWheelChanged += GraphCanvas_PointerWheelChanged;
 
                 TransformListBox.SelectionChanged += TransformListBox_SelectionChanged;
+                TransformListBox.SelectedIndex = 0; // Set default selection to the first item
             }
 
             //multiplierSlider.ValueChanged += MultiplierSlider_ValueChanged;
@@ -56,6 +83,11 @@ namespace EZ_HeadTracker.Views
 
             // instead of having different tabs for transforms
             // uise one tab with one graph, will colors circles
+
+        }
+
+        private void HeadTracker_HeadPoseUpdated(object? sender, HeadPoseEventArgs e)
+        {
 
         }
 
@@ -68,36 +100,10 @@ namespace EZ_HeadTracker.Views
                 string selected = selectedItem.Content.ToString();
                 ExpanderTxtBlock.Text = selected;
                 Expander.IsExpanded = false;
-            }1
+            }
         }
 
-        public async Task GetCurrentTransformationData()
-        {
-            // Start a background task that runs continuously
-            //await Task.Run(async () =>
-            //{
-            //    while (MainWindow.headTracker != null)
-            //    {
-            //        // Get the current transformation data from head tracker
-            //        TransformationData data = MainWindow.headTracker.currentData;
-            //        data.Round(2);
 
-            //        // Use InvokeAsync to ensure UI updates are done on the UI thread
-            //        await Dispatcher.UIThread.InvokeAsync(() =>
-            //        {
-            //            // Update the UI controls with the transformation data
-            //            Rotation.Text = $"{data.Pitch}, {data.Yaw}, {data.Roll}";
-            //            Translation.Text = $"{data.X}, {data.Y}, {data.Z}";
-
-            //            DrawCircleOnGraph(data.X);
-
-            //        });
-
-            //        // Wait for a short period before fetching the data again
-            //        await Task.Delay(1); // Adjust the delay as needed
-            //    }
-            //});
-        }
 
         double zoomLevel = 1f;
         private void GraphCanvas_PointerWheelChanged(object? sender, Avalonia.Input.PointerWheelEventArgs e)
@@ -128,7 +134,7 @@ namespace EZ_HeadTracker.Views
         }
         private void TransformationUserControl_Loaded(object? sender, RoutedEventArgs e)
         {
-            headTrackerData = GetCurrentTransformationData();
+
         }
 
 
@@ -138,20 +144,31 @@ namespace EZ_HeadTracker.Views
         private int smallSpacing => (int)(initSpaceMultiplier * zoomLevel);
         private int bigSpacing => smallSpacing * 5;
 
+        private Point GraphCenterPoint
+        {
+            get
+            {
+                double curWidth = GraphCanvas.Bounds.Width;
+                double curHeight = GraphCanvas.Bounds.Height;
+
+                double cch = canvasParent.Bounds.Height;
+
+                double offsetX = curWidth / 2;
+                double offsetY = curHeight / 2;
+
+                return new Point(offsetX, offsetY);
+            }
+        }
+
         public void DrawGraph()
         {
             double curWidth = GraphCanvas.Bounds.Width;
             double curHeight = GraphCanvas.Bounds.Height;
 
-            double cch = canvasParent.Bounds.Height;
-
-            double offsetX = curWidth / 2;
-            double offsetY = curHeight / 2;
-
-            Point offset = new Point(offsetX, offsetY);
+            Point offset = GraphCenterPoint;
 
             // Set the origin of the canvas to the center
-            GraphCanvas.RenderTransform = new TranslateTransform(offsetX, offsetY);
+            GraphCanvas.RenderTransform = new TranslateTransform(offset.X, offset.Y);
 
             // Create a background rectangle to offset
             Rectangle backgroundRect = new Rectangle
@@ -161,8 +178,8 @@ namespace EZ_HeadTracker.Views
                 Fill = new SolidColorBrush(Colors.Black)
             };
 
-            Canvas.SetLeft(backgroundRect, -offsetX);
-            Canvas.SetTop(backgroundRect, -offsetY);
+            Canvas.SetLeft(backgroundRect, -offset.X);
+            Canvas.SetTop(backgroundRect, -offset.Y);
 
             double r = 20;
 
@@ -335,38 +352,108 @@ namespace EZ_HeadTracker.Views
             GraphCanvas.Children.AddRange(labels);
         }
 
-        public void DrawCircleOnGraph(double pos)
+        public enum GraphAxis { XAxis, YAxis, AutoSelect }
+
+        /// <summary>
+        /// Adds a shape to the graph canvas to be drawn. If the shape already exists, it will be replaced.
+        /// </summary>
+        /// <param name="type"></param>
+        /// <param name="degree"></param>
+        public void AddShapesToDraw(TransformationData data)
         {
-            double r = 20;
-
-            Ellipse circle = new Ellipse
+            for(int i = 0; i < 6; i++)
             {
-                Width = r,
-                Height = r,
-                Fill = new SolidColorBrush(Colors.Red),
-                Stroke = new SolidColorBrush(Colors.White),
-                StrokeThickness = 2
-            };
+                double degree = data.DataArray[i];
+                TransformationType type = (TransformationType)i;
 
-            double x = DegreeToSpace(pos);
+                Shape newShape = CreateShape(type, degree, GraphAxis.AutoSelect);
 
-            double y = DegreeToSpace(pos);
-
-            Canvas.SetLeft(circle, x - r / 2);
-            Canvas.SetTop(circle, -r / 2);
-            // find and remove previous ellipse
-
-            foreach (var child in GraphCanvas.Children)
-            {
-                if (child is Ellipse && child != circle)
+                if (ShapesToDraw.ContainsKey(type))
                 {
-                    GraphCanvas.Children.Remove(child);
-                    break;
+                    GraphCanvas.Children.Remove(ShapesToDraw[type]);
+                    ShapesToDraw[type] = newShape;
+                }
+                else
+                {
+                    ShapesToDraw.Add(type, newShape);
                 }
             }
-
-            GraphCanvas.Children.Add(circle);
         }
+
+        private Dictionary<TransformationType, Shape> ShapesToDraw = new();
+        public void DrawShapes()
+        {
+            foreach (var shape in ShapesToDraw)
+            {
+                bool canShow = CanShowShape[(int)shape.Key];
+
+                if(canShow)
+                {
+                    GraphCanvas.Children.Add(shape.Value);
+                }
+            }
+        }
+
+        double shapeRadius = 20;
+
+        private Shape CreateShape(TransformationType type, double degree, GraphAxis axis = GraphAxis.AutoSelect)
+        {
+            Shape shape;
+
+            Color color = TransformColors[(int)type];
+
+            switch (type)
+            {
+                case TransformationType.Pitch:
+                case TransformationType.Yaw:
+                case TransformationType.Roll:
+                    shape = new Ellipse
+                    {
+                        Width = shapeRadius,
+                        Height = shapeRadius,
+                        Fill = new SolidColorBrush(color),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = 2
+                    };
+                    break;
+                case TransformationType.X:
+                case TransformationType.Y:
+                case TransformationType.Z:
+                    shape = new Rectangle
+                    {
+                        Width = shapeRadius,
+                        Height = shapeRadius,
+                        Fill = new SolidColorBrush(color),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = 2
+                    };
+                    break;
+                default:
+                    return null;// this should never run
+            }
+
+            double pos = DegreeToSpace(degree);
+
+            if(axis == GraphAxis.AutoSelect)
+            {
+                axis = DrawAxis(type);
+            }
+
+            if (axis == GraphAxis.XAxis)
+            {
+                Canvas.SetLeft(shape, pos - shapeRadius / 2);
+                Canvas.SetTop(shape, -shapeRadius / 2);
+            }
+            else
+            {
+                Canvas.SetTop(shape, pos - shapeRadius / 2);
+                Canvas.SetLeft(shape, -shapeRadius / 2);
+            }
+
+            return shape;
+
+        }
+
         double SpaceToDegree(double canvasPos)
         {
             // given a canvas position, convert it to a space value
@@ -378,6 +465,23 @@ namespace EZ_HeadTracker.Views
             // given a canvas position, convert it to a space value
 
             return (canvasPos / spaceValue) * bigSpacing;
+        }
+
+        public GraphAxis DrawAxis(TransformationType type)
+        {
+            switch (type)
+            {
+                case TransformationType.Pitch:
+                case TransformationType.Y:
+                case TransformationType.Z:
+                    return GraphAxis.YAxis;
+                case TransformationType.Roll:
+                case TransformationType.X:
+                case TransformationType.Yaw:
+                    return GraphAxis.XAxis;
+                default:
+                    return GraphAxis.XAxis;
+            }
         }
 
         public struct TransformationSaveData

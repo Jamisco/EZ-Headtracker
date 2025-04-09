@@ -28,6 +28,13 @@
 		<DockPanel x:Name="UniversalPanel" Grid.Column="0"  >
 
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,5">
+				
+				<StackPanel Orientation="Vertical">
+					
+					<Label x:Name="rotationLbl" Content="Rotation " />
+					<Label x:Name="translationLbl" Content="Translation "/>
+					
+				</StackPanel>
 
 				<Grid>
 					
@@ -36,7 +43,8 @@
 						<ColumnDefinition Width="*"  />
 					</Grid.ColumnDefinitions>
 					
-					<Button Background="Green" Content="Center Head" Grid.Column="0"/>
+					<Button x:Name="CenterHeadBtn" Background="Green" Content="Center Head" Grid.Column="0"/>
+
 
 					<StackPanel Background="Red" Grid.Column="1" Margin="0,0,10,0" HorizontalAlignment="Right" Width="300">
 						
@@ -52,7 +60,7 @@
 			<DockPanel x:Name="TransformationPanel"
 						Grid.Column="0" Grid.Row="1">
 
-				<views:TransformationUserControl x:Name="TransformationUserControl"/>
+				<views:TransformationUserControl x:Name="TransUserControl"/>
 
 			</DockPanel>
 			
