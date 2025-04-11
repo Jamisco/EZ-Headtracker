@@ -9,7 +9,7 @@ namespace EZ_HeadTracker.Views
     public partial class SliderUserControl : UserControl
     {
         private double _sliderIncrement = .1;
-        private double _sliderMinimum = .1f;
+        private double _sliderMinimum = 0f;
         private double _sliderMaximum = 10;
 
         public double SliderIncrement
@@ -69,6 +69,7 @@ namespace EZ_HeadTracker.Views
         private void Slider_ValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
         {
             txtBox.Text = slider.Value.ToString("0.0");
+            slider.Value = Math.Round(slider.Value, 1);
         }
 
         private void PlusBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using static EZ_HeadTracker.Hardware.HeadTracker;
 
@@ -71,6 +72,7 @@ namespace EZ_HeadTracker.Views
             InitializeComponent();
             DataContext = new TransformationViewModel();
 
+
             if (!Design.IsDesignMode)
             {
                 Loaded += TransformationUserControl_Loaded;
@@ -97,6 +99,8 @@ namespace EZ_HeadTracker.Views
                 }
             }
 
+            topSlider.txtLabel.Content = "Multiplier";
+            botSlider.txtLabel.Content = "Deadzone";
         }
 
         private DispatcherTimer _debounceTimer;
@@ -107,19 +111,18 @@ namespace EZ_HeadTracker.Views
             {
                 _debounceTimer = new DispatcherTimer
                 {
-                    Interval = TimeSpan.FromMilliseconds(300) // adjust as needed
+                    Interval = TimeSpan.FromMilliseconds(50) // adjust as needed
                 };
 
                 _debounceTimer.Tick += (s, args) =>
                 {
                     _debounceTimer.Stop();
 
+
                     TransformationType cur = SelectedType;
                     tsd.AddSettings(cur, GetCurrentSettings());
                     tsd.UpdateShapes2Show(CanShowShape);
                     tsd.SaveSettings();
-
-                    YBox.IsChecked = !YBox.IsChecked;
                 };
             }
 
@@ -138,11 +141,11 @@ namespace EZ_HeadTracker.Views
                 ExpanderTxtBlock.Text = selected;
                 Expander.IsExpanded = false;
 
-                if(tsd.TSettings != null)
+                if(tsd.CurTSettings != null)
                 {
                     TSettings settings;
 
-                    if(!tsd.TSettings.TryGetValue(SelectedType, out settings))
+                    if(!tsd.CurTSettings.TryGetValue(SelectedType, out settings))
                     {
                         // if we dont have the settings for the selected type, we load the default settings
                         settings = TSettings.DefaultSettings();
@@ -202,9 +205,9 @@ namespace EZ_HeadTracker.Views
             }
 
             // we load Pitch because Pitch will always be displayed FIRST!
-            if (tsd.TSettings != null)
+            if (tsd.CurTSettings != null)
             {
-                TSettings settings = tsd.TSettings[TransformationType.Pitch];
+                TSettings settings = tsd.CurTSettings[TransformationType.Pitch];
 
                 topSlider.slider.Value = settings.Multiplier;
                 botSlider.slider.Value = settings.Deadzone;
@@ -439,24 +442,31 @@ namespace EZ_HeadTracker.Views
         {
             for(int i = 0; i < 6; i++)
             {
-                double degree = data.DataArray[i];
                 TransformationType type = (TransformationType)i;
+                double degree = data.DataArray[i];
+                double deadzone = tsd.CurTSettings[type].Deadzone;
 
-                Shape newShape = CreateShape(type, degree, GraphAxis.AutoSelect);
+                degree = ApplyCalculation(type, degree);
+
+                Shape newDegShape = CreateAngleShape(type, degree, GraphAxis.AutoSelect);
+                Shape newDeadShape = CreateDeadzoneShape(type, deadzone, GraphAxis.AutoSelect);
+
 
                 if (ShapesToDraw.ContainsKey(type))
                 {
-                    GraphCanvas.Children.Remove(ShapesToDraw[type]);
-                    ShapesToDraw[type] = newShape;
+                    GraphCanvas.Children.Remove(ShapesToDraw[type].Item1);
+                    GraphCanvas.Children.Remove(ShapesToDraw[type].Item2);
+
+                    ShapesToDraw[type] = (newDegShape, newDeadShape);
                 }
                 else
                 {
-                    ShapesToDraw.Add(type, newShape);
+                    ShapesToDraw.Add(type, (newDegShape, newDeadShape));
                 }
             }
         }
 
-        private Dictionary<TransformationType, Shape> ShapesToDraw = new();
+        private Dictionary<TransformationType, (Shape, Shape)> ShapesToDraw = new();
         public void DrawShapes()
         {
             foreach (var shape in ShapesToDraw)
@@ -465,14 +475,22 @@ namespace EZ_HeadTracker.Views
 
                 if(canShow)
                 {
-                    GraphCanvas.Children.Add(shape.Value);
+                    if (shape.Value.Item1 != null)
+                    {
+                        GraphCanvas.Children.Add(shape.Value.Item1);
+                    }
+                    if (shape.Value.Item2 != null)
+                    {
+                        GraphCanvas.Children.Add(shape.Value.Item2);
+                    }
+
                 }
             }
         }
 
         double shapeRadius = 20;
 
-        private Shape CreateShape(TransformationType type, double degree, GraphAxis axis = GraphAxis.AutoSelect)
+        private Shape CreateAngleShape(TransformationType type, double degree, GraphAxis axis = GraphAxis.AutoSelect)
         {
             Shape shape;
 
@@ -510,6 +528,11 @@ namespace EZ_HeadTracker.Views
 
             double pos = DegreeToSpace(degree);
 
+            if(!WithinGraph(pos))
+            {
+                return null;
+            }
+
             if(axis == GraphAxis.AutoSelect)
             {
                 axis = DrawAxis(type);
@@ -528,6 +551,95 @@ namespace EZ_HeadTracker.Views
 
             return shape;
 
+        }
+
+        private Shape CreateDeadzoneShape(TransformationType type, double degree, GraphAxis axis = GraphAxis.AutoSelect)
+        {
+            Shape shape;
+
+            Color color = TransformColors[(int)type];
+
+            double d2p = DegreeToSpace(degree) * 2;
+
+            double shapeRadius = d2p;
+
+
+            switch (type)
+            {
+                case TransformationType.Pitch:
+                case TransformationType.Yaw:
+                case TransformationType.Roll:
+                    shape = new Ellipse
+                    {
+                        Width = shapeRadius,
+                        Height = shapeRadius,
+                        Fill = new SolidColorBrush(color),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = 2
+                    };
+                    break;
+                case TransformationType.X:
+                case TransformationType.Y:
+                case TransformationType.Z:
+                    shape = new Rectangle
+                    {
+                        Width = shapeRadius,
+                        Height = shapeRadius,
+                        Fill = new SolidColorBrush(color),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = 2
+                    };
+                    break;
+                default:
+                    return null;// this should never run
+            }
+
+            double pos = DegreeToSpace(degree);
+
+            if (!WithinGraph(pos))
+            {
+                return null;
+            }
+
+            if (axis == GraphAxis.AutoSelect)
+            {
+                axis = DrawAxis(type);
+            }
+
+            if (axis == GraphAxis.XAxis)
+            {
+                shape.Width = d2p;
+                shape.Height = shapeRadius;
+
+                Canvas.SetLeft(shape, -shapeRadius / 2);
+                Canvas.SetTop(shape, -shapeRadius / 2);
+            }
+            else
+            {
+                shape.Width = shapeRadius;
+                shape.Height = d2p;
+
+                Canvas.SetTop(shape, -shapeRadius / 2);
+                Canvas.SetLeft(shape, -shapeRadius / 2);
+            }
+
+            return shape;
+
+        }
+
+        private bool WithinGraph(double graphSpace)
+        {
+            double curWidth = GraphCanvas.Bounds.Width;
+            double curHeight = GraphCanvas.Bounds.Height;
+            if (graphSpace > curWidth / 2 || graphSpace < -curWidth / 2)
+            {
+                return false;
+            }
+            if (graphSpace > curHeight / 2 || graphSpace < -curHeight / 2)
+            {
+                return false;
+            }
+            return true;
         }
 
         double SpaceToDegree(double canvasPos)
@@ -559,7 +671,37 @@ namespace EZ_HeadTracker.Views
                     return GraphAxis.XAxis;
             }
         }
-           
+   
+        public double ApplyCalculation(TransformationType type, double degrees)
+        {
+            TSettings settings;
+
+            if (!tsd.CurTSettings.TryGetValue(type, out settings))
+            {
+                // if we dont have the settings for the selected type, we load the default settings
+                settings = TSettings.DefaultSettings();
+
+                tsd.AddSettings(SelectedType, settings);
+            }
+
+            double multiplier = settings.Multiplier;
+            double deadzone = settings.Deadzone;
+
+            if (settings.Invert)
+            {
+                degrees = -degrees;
+            }
+
+            degrees = degrees * multiplier;
+
+            // apply the deadzone
+            if (Math.Abs(degrees) < deadzone)
+            {
+                degrees = 0;
+            }
+
+            return degrees;
+        }
         private TSettings GetCurrentSettings()
         {
             TSettings settings = new TSettings
@@ -593,34 +735,39 @@ namespace EZ_HeadTracker.Views
             }
         }
 
-        public struct TransformationSaveData
+        public class TransformationSaveData
         {
             public static string saveDir = System.IO.Path.Combine(AppContext.BaseDirectory, "SavedData");
-
-            public Dictionary<TransformationType, TSettings> TSettings { get; private set; }
+            public Dictionary<TransformationType, TSettings> CurTSettings { get; private set; }
             public List<bool> Shapes2Show { get; private set; }
 
             [JsonConstructor]
-            public TransformationSaveData(Dictionary<TransformationType, TSettings> tSettings, List<bool> shapes2Show)
+            public TransformationSaveData(Dictionary<TransformationType, TSettings> CurTSettings, List<bool> Shapes2Show)
             {
-                TSettings = tSettings ?? new Dictionary<TransformationType, TSettings>();
-                Shapes2Show = shapes2Show ?? new List<bool>() {true, false, false, false, false, false};
+                this.CurTSettings = CurTSettings ?? new Dictionary<TransformationType, TSettings>();
+                this.Shapes2Show = Shapes2Show ?? new List<bool>() { true, false, false, false, false, false };
+            }
+
+            public TransformationSaveData()
+            {
+                CurTSettings = new Dictionary<TransformationType, TSettings>();
+                Shapes2Show = new List<bool>() { true, false, false, false, false, false };
             }
 
             public void AddSettings(TransformationType type, TSettings settings)
             {
-                if(TSettings == null)
+                if(CurTSettings == null)
                 {
-                    TSettings = new Dictionary<TransformationType, TSettings>();
+                    CurTSettings = new Dictionary<TransformationType, TSettings>();
                 }
 
-                if (TSettings.ContainsKey(type))
+                if (CurTSettings.ContainsKey(type))
                 {
-                    TSettings[type] = settings;
+                    CurTSettings[type] = settings;
                 }
                 else
                 {
-                    TSettings.Add(type, settings);
+                    CurTSettings.Add(type, settings);
                 }
             }
 
@@ -646,14 +793,35 @@ namespace EZ_HeadTracker.Views
             {
                 string filePath = System.IO.Path.Combine(saveDir, "TransformSettings.json");
 
-                if (System.IO.File.Exists(filePath))
+                try
                 {
-                    string json = System.IO.File.ReadAllText(filePath);
+                    if (System.IO.File.Exists(filePath))
+                    {
+                        string json = System.IO.File.ReadAllText(filePath);
 
-                    TransformationSaveData settings = System.Text.Json.JsonSerializer.Deserialize<TransformationSaveData>(json);
+                        TransformationSaveData settings = System.Text.Json.JsonSerializer.Deserialize<TransformationSaveData>(json);
 
-                    this = settings;
+                        this.CurTSettings = settings.CurTSettings;
+                        this.Shapes2Show = settings.Shapes2Show;
+                    }
                 }
+                catch (Exception ex)
+                {
+                    System.IO.File.WriteAllText(filePath, "");
+
+                    TransformationSaveData settings = new TransformationSaveData();
+
+                    this.CurTSettings = settings.CurTSettings;
+                    this.Shapes2Show = settings.Shapes2Show;
+
+                    for(int i = 0; i < Shapes2Show.Count; i++)
+                    {
+                        CurTSettings.Add((TransformationType)i, TSettings.DefaultSettings());
+                    }
+
+                    SaveSettings();
+                }
+
             }
         }
     }

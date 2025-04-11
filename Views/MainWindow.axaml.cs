@@ -5,6 +5,7 @@ using System;
 using static EZ_HeadTracker.Hardware.HeadTracker;
 using System.Threading.Tasks;
 using Avalonia.Media;
+using static EZ_HeadTracker.Views.TransformationUserControl;
 
 namespace EZ_HeadTracker.Views
 {
@@ -46,6 +47,12 @@ namespace EZ_HeadTracker.Views
 
             // on close event
 
+            MultiplierSlider.txtLabel.Content = "Multiplier";
+            MultiplierSlider.slider.Value = 1;
+
+            SmootherSlider.txtLabel.Content = "Smoothing";
+            SmootherSlider.slider.Value = 1;
+
             this.Closing += MainWindow_Closing;
         }
 
@@ -79,7 +86,10 @@ namespace EZ_HeadTracker.Views
                 rotationLbl.Content = $"{data.Pitch}, {data.Yaw}, {data.Roll}";
                 translationLbl.Content = $"{data.X}, {data.Y}, {data.Z}";
 
-                double sData = e.Data.DataArray[TransUserControl.SelectedIndex];
+                double mul = MultiplierSlider.slider.Value;
+                data.Multiply((float)mul);
+
+                //double sData = e.Data.DataArray[TransUserControl.SelectedIndex];
                 TransUserControl.AddShapesToDraw(data);
                 TransUserControl.DrawShapes();
             });

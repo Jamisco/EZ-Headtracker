@@ -66,6 +66,16 @@ namespace EZ_HeadTracker.Hardware
                 Y = (float)Math.Round(Y, d);
                 Z = (float)Math.Round(Z, d);
             }
+
+            public void Multiply(float factor)
+            {
+                Pitch *= factor;
+                Yaw *= factor;
+                Roll *= factor;
+                X *= factor;
+                Y *= factor;
+                Z *= factor;
+            }
         }
 
         public HeadTracker(int cameraIndex = 0)
@@ -465,11 +475,11 @@ namespace EZ_HeadTracker.Hardware
 
         public void StopTracking()
         {
-            IsTracking = false;
             if (trackingThread != null && trackingThread.IsAlive)
             {
                 trackingThread.Join(3000);  // Wait for the thread to finish
             }
+            IsTracking = false;
         }
         public void ReleaseResources()
         {

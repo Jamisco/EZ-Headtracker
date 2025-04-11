@@ -46,7 +46,7 @@
 					<Button x:Name="CenterHeadBtn" Background="Green" Content="Center Head" Grid.Column="0"/>
 
 
-					<StackPanel Background="Red" Grid.Column="1" Margin="0,0,10,0" HorizontalAlignment="Right" Width="300">
+					<StackPanel Grid.Column="1" Margin="0,0,10,0" HorizontalAlignment="Right" Width="300">
 						
 						<views:SliderUserControl x:Name="MultiplierSlider"/>
 						<views:SliderUserControl x:Name="SmootherSlider"/>
