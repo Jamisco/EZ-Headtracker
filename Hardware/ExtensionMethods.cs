@@ -139,6 +139,20 @@ namespace EZ_HeadTracker.Hardware
             return new Point2f(x / points.Length, y / points.Length);
         }
 
+        internal static Point2f GetCentriod(OpenCvSharp.Point[] points)
+        {
+            float x = 0;
+            float y = 0;
+
+            foreach (var point in points)
+            {
+                x += point.X;
+                y += point.Y;
+            }
+
+            return new Point2f(x / points.Length, y / points.Length);
+        }
+
         public static Point3f GetCentriod(Point3f[] points)
         {
             float x = 0;
@@ -155,11 +169,14 @@ namespace EZ_HeadTracker.Hardware
             return new Point3f(x / points.Length, y / points.Length, z / points.Length);
         }
 
+
+
         // write function to normalize float between 2 given numbers
 
         public static float Normalize(float value, float min, float max)
         {
             return (value - min) / (max - min);
         }
+
     }
 }

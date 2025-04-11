@@ -6,9 +6,12 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using EZ_HeadTracker.ViewModels;
+using OpenCvSharp.XPhoto;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using static EZ_HeadTracker.Hardware.HeadTracker;
 
@@ -25,7 +28,7 @@ namespace EZ_HeadTracker.Views
             get => MainWndow.FindControl<DockPanel>("TransformationPanel")!;
         }
 
-
+        public Dictionary<TransformationType, TransformationSaveData> TransformationSettings = new();
         private bool InvertValue => InvertBox.IsChecked == true;
         private bool ShowPitch => PitchBox.IsChecked == true;
         private bool ShowYaw => YawBox.IsChecked == true;
@@ -58,9 +61,10 @@ namespace EZ_HeadTracker.Views
         };
 
 
-        // Fix for CS1525, CS1002, CS1519, and CS8124 errors
         public TransformationType SelectedType => (TransformationType)TransformListBox.SelectedIndex;
         public int SelectedIndex => TransformListBox.SelectedIndex;
+
+        TransformationSaveData tsd = new TransformationSaveData();
 
         public TransformationUserControl()
         {
@@ -75,20 +79,53 @@ namespace EZ_HeadTracker.Views
 
                 TransformListBox.SelectionChanged += TransformListBox_SelectionChanged;
                 TransformListBox.SelectedIndex = 0; // Set default selection to the first item
+
+                topSlider.slider.ValueChanged += Control_Changed;
+                botSlider.slider.ValueChanged += Control_Changed;
+                InvertBox.IsCheckedChanged += Control_Changed;
+
+                foreach (Control c in CheckboxPanel.Children.Where(e => e is Control))
+                {
+                    if (c is CheckBox)
+                    {
+                        (c as CheckBox).IsCheckedChanged += Control_Changed;
+                    }
+                    else if (c is Slider)
+                    {
+                        (c as Slider).ValueChanged += Control_Changed;
+                    }
+                }
             }
-
-            //multiplierSlider.ValueChanged += MultiplierSlider_ValueChanged;
-            //multiplierTxtBox.LostFocus += MultiplierTxtBox_LostFocus;
-            //multiplierTxtBox.TextChanged += MultiplierTxtBox_TextChanged;
-
-            // instead of having different tabs for transforms
-            // uise one tab with one graph, will colors circles
 
         }
 
-        private void HeadTracker_HeadPoseUpdated(object? sender, HeadPoseEventArgs e)
+        private DispatcherTimer _debounceTimer;
+        private void Control_Changed(object? sender, RoutedEventArgs e)
         {
+            // essentially this prevents repeated calls to save the settings if the user is still changing the settings... for example while the user is moving the slider
+            if (_debounceTimer == null)
+            {
+                _debounceTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(300) // adjust as needed
+                };
 
+                _debounceTimer.Tick += (s, args) =>
+                {
+                    _debounceTimer.Stop();
+
+                    TransformationType cur = SelectedType;
+                    tsd.AddSettings(cur, GetCurrentSettings());
+                    tsd.UpdateShapes2Show(CanShowShape);
+                    tsd.SaveSettings();
+
+                    YBox.IsChecked = !YBox.IsChecked;
+                };
+            }
+
+            // Restart timer every time a change comes in
+            _debounceTimer.Stop();
+            _debounceTimer.Start();
         }
 
         private void TransformListBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -100,6 +137,23 @@ namespace EZ_HeadTracker.Views
                 string selected = selectedItem.Content.ToString();
                 ExpanderTxtBlock.Text = selected;
                 Expander.IsExpanded = false;
+
+                if(tsd.TSettings != null)
+                {
+                    TSettings settings;
+
+                    if(!tsd.TSettings.TryGetValue(SelectedType, out settings))
+                    {
+                        // if we dont have the settings for the selected type, we load the default settings
+                        settings = TSettings.DefaultSettings();
+
+                        tsd.AddSettings(SelectedType, settings);
+                    }
+
+                    topSlider.slider.Value = settings.Multiplier;
+                    botSlider.slider.Value = settings.Deadzone;
+                    InvertBox.IsChecked = settings.Invert;
+                }
             }
         }
 
@@ -134,6 +188,28 @@ namespace EZ_HeadTracker.Views
         }
         private void TransformationUserControl_Loaded(object? sender, RoutedEventArgs e)
         {
+            tsd.LoadSettings();
+            InitLoadSettings();
+        }
+
+        private void InitLoadSettings()
+        {
+            int i = 0;
+
+            foreach(CheckBox c in CheckboxPanel.Children.Where(x => x is CheckBox))
+            {
+                c.IsChecked = tsd.Shapes2Show[i++];
+            }
+
+            // we load Pitch because Pitch will always be displayed FIRST!
+            if (tsd.TSettings != null)
+            {
+                TSettings settings = tsd.TSettings[TransformationType.Pitch];
+
+                topSlider.slider.Value = settings.Multiplier;
+                botSlider.slider.Value = settings.Deadzone;
+                InvertBox.IsChecked = settings.Invert;
+            }
 
         }
 
@@ -483,12 +559,102 @@ namespace EZ_HeadTracker.Views
                     return GraphAxis.XAxis;
             }
         }
+           
+        private TSettings GetCurrentSettings()
+        {
+            TSettings settings = new TSettings
+            {
+                Invert = InvertValue,
+                Multiplier = topSlider.slider.Value,
+                Deadzone = botSlider.slider.Value
+            };
+
+            return settings;
+        }
+        public struct TSettings
+        {
+            public bool Invert { get; set; }
+            public double Multiplier { get; set; }
+            public double Deadzone { get; set; }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Multiplier, Deadzone, Invert);
+            }
+
+            public static TSettings DefaultSettings()
+            {
+                return new TSettings
+                {
+                    Invert = false,
+                    Multiplier = 1,
+                    Deadzone = 0
+                };
+            }
+        }
 
         public struct TransformationSaveData
         {
             public static string saveDir = System.IO.Path.Combine(AppContext.BaseDirectory, "SavedData");
-            public double Multiplier { get; set; }
-            public bool Invert { get; set; }
+
+            public Dictionary<TransformationType, TSettings> TSettings { get; private set; }
+            public List<bool> Shapes2Show { get; private set; }
+
+            [JsonConstructor]
+            public TransformationSaveData(Dictionary<TransformationType, TSettings> tSettings, List<bool> shapes2Show)
+            {
+                TSettings = tSettings ?? new Dictionary<TransformationType, TSettings>();
+                Shapes2Show = shapes2Show ?? new List<bool>() {true, false, false, false, false, false};
+            }
+
+            public void AddSettings(TransformationType type, TSettings settings)
+            {
+                if(TSettings == null)
+                {
+                    TSettings = new Dictionary<TransformationType, TSettings>();
+                }
+
+                if (TSettings.ContainsKey(type))
+                {
+                    TSettings[type] = settings;
+                }
+                else
+                {
+                    TSettings.Add(type, settings);
+                }
+            }
+
+            public void UpdateShapes2Show(bool[] showShapes)
+            {
+                this.Shapes2Show = showShapes.ToList();
+            }
+
+            public void SaveSettings()
+            {
+                string filePath = System.IO.Path.Combine(saveDir, "TransformSettings.json");
+
+                if (!System.IO.Directory.Exists(saveDir))
+                {
+                    System.IO.Directory.CreateDirectory(saveDir);
+                }
+
+                string json = System.Text.Json.JsonSerializer.Serialize(this);
+                System.IO.File.WriteAllText(filePath, json);
+            }
+
+            public void  LoadSettings()
+            {
+                string filePath = System.IO.Path.Combine(saveDir, "TransformSettings.json");
+
+                if (System.IO.File.Exists(filePath))
+                {
+                    string json = System.IO.File.ReadAllText(filePath);
+
+                    TransformationSaveData settings = System.Text.Json.JsonSerializer.Deserialize<TransformationSaveData>(json);
+
+                    this = settings;
+                }
+            }
         }
     }
 }

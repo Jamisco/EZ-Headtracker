@@ -9,7 +9,8 @@
 	<DockPanel Background="Gray">
 		
 		<DockPanel DockPanel.Dock="Top">
-			<StackPanel Orientation="Vertical" DockPanel.Dock="Top">
+			
+			<StackPanel Orientation="Vertical" DockPanel.Dock="Top" ZIndex="1">
 			
 				<Grid>
 					<Grid.ColumnDefinitions>
@@ -22,37 +23,41 @@
 					<Grid.RowDefinitions>
 						<RowDefinition Height="*" />
 					</Grid.RowDefinitions>
-
-					<!-- Expander on the left -->
-					<Expander 
-							x:Name="Expander"
-							VerticalAlignment="Stretch"
-							BorderThickness="1"
+ 
+					<Canvas ZIndex="2"
 							Grid.Row="0"
 							Grid.Column="0"
-							Padding="0"
+							Width="120"
 							Margin="0,5">
+						
+						<Expander
+								x:Name="Expander"
+								BorderThickness="1"
+								Padding="0"	
+								>
 
-						<Expander.Header>
-							<TextBlock Text="Select"
-									    x:Name="ExpanderTxtBlock"
-										HorizontalAlignment="Center"
-										VerticalAlignment="Center"
-										Padding="0"
-									    MinWidth="40"
-										Margin="0"/>
-						</Expander.Header>
+							<Expander.Header>
+								<TextBlock Text="Select"
+											x:Name="ExpanderTxtBlock"
+											HorizontalAlignment="Center"
+											VerticalAlignment="Center"
+											Padding="0"
+											Margin="0"/>
+							</Expander.Header>
 
-						<ListBox x:Name="TransformListBox">
-							<ListBoxItem Content="Pitch" />
-							<ListBoxItem Content="Yaw" />
-							<ListBoxItem Content="Roll" />
-							<ListBoxItem Content="X" />
-							<ListBoxItem Content="Y" />
-							<ListBoxItem Content="Z" />
-						</ListBox>
-					</Expander>
-					
+							<ListBox x:Name="TransformListBox">
+								<ListBoxItem Content="Pitch" />
+								<ListBoxItem Content="Yaw" />
+								<ListBoxItem Content="Roll" />
+								<ListBoxItem Content="X" />
+								<ListBoxItem Content="Y" />
+								<ListBoxItem Content="Z" />
+							</ListBox>
+
+						</Expander>
+					</Canvas>
+					<!-- Expander on the left -->
+
 					<StackPanel Grid.Row="0" Grid.Column="1" Orientation="Vertical" Margin="10,5,0,0">  
 						<TextBlock FontSize="15" Text="Invert" HorizontalAlignment="Center" />  
 						<CheckBox HorizontalAlignment="Center" Margin="0,5" x:Name="InvertBox"/>  
@@ -71,7 +76,7 @@
 
 			</StackPanel>
 			
-			<Grid Margin="0,5,0,0" DockPanel.Dock="Top">
+			<Grid x:Name="CheckboxPanel" Margin="0,5,0,0" DockPanel.Dock="Top">
 					<Grid.ColumnDefinitions>
 						<ColumnDefinition Width="*"/>
 						<ColumnDefinition Width="*"/>

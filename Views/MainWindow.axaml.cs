@@ -49,6 +49,16 @@ namespace EZ_HeadTracker.Views
             this.Closing += MainWindow_Closing;
         }
 
+        private void TransUserControl_PropertyChanged(object? sender, Avalonia.AvaloniaPropertyChangedEventArgs e)
+        {
+            TransUserControl.ZBox.IsChecked = !TransUserControl.ZBox.IsChecked;
+
+        }
+
+        private void TransformationPanel_PointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
+        {
+        }
+
         private void CenterHeadBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             if(headTracker != null && headTracker.IsTracking)

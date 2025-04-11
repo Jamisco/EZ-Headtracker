@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="EZ_HeadTracker.text"
+        Title="text"
+		xmlns:views="clr-namespace:EZ_HeadTracker.Views"
+		>
+
+
+	<StackPanel Background="Gray" Orientation="Vertical">
+
+		<Grid >
+			<StackPanel>
+
+				<TextBlock Background="Red" Text="Testing 123" FontSize="50"/>
+
+			</StackPanel>
+
+			<Canvas ZIndex="2" HorizontalAlignment="Left" VerticalAlignment="Top" Width="570">
+				<Expander Header="Select" VerticalAlignment="Top">
+
+					<ListBox>
+						<ListBoxItem Content="Item 1" />
+						<ListBoxItem Content="Item 2" />
+						<ListBoxItem Content="Item 3" />
+					</ListBox>
+
+				</Expander>
+			</Canvas>
+
+		</Grid>
+
+		<TextBlock Background="Green" FontSize="50" Text="Testing 123"/>
+
+
+
+	</StackPanel>
+
+</Window>

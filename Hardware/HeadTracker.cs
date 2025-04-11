@@ -25,7 +25,7 @@ namespace EZ_HeadTracker.Hardware
 
         public event EventHandler<HeadPoseEventArgs> HeadPoseUpdated;
         public event EventHandler<HeadPoseEventArgs> HeadPoseLost;
-
+        
 
         /// <summary>
         /// All the transformations that can be done to the head pose.
@@ -189,6 +189,10 @@ namespace EZ_HeadTracker.Hardware
                 prevFrame = Frame.Clone();
             }
         }
+
+        private double threshold = 30;
+        private double step = 30;
+
         private List<Point2f> ExtractLedPoints(Mat frame)
         {
             try
@@ -196,26 +200,60 @@ namespace EZ_HeadTracker.Hardware
                 Point[][] curContours;
                 Mat grayFrame = new Mat();
 
-                Cv2.CvtColor(frame, grayFrame, ColorConversionCodes.BGR2GRAY);
+                // this is to reduce all the glare that might occur from the leds
+                int co = 100;
+
+                Cv2.InRange(frame, new Scalar(co, co, co), new Scalar(255, 255, 255), grayFrame);
 
                 HierarchyIndex[] hierarchy;
 
                 // apply gausasain filter
                 //Cv2.GaussianBlur(grayFrame, grayFrame, new Size(5, 5), 0);
 
-                Cv2.Threshold(grayFrame, grayFrame, 50, 255, ThresholdTypes.Binary);
+                //Cv2.Threshold(grayFrame, grayFrame, threshold, 255, ThresholdTypes.Binary);
 
+                Cv2.FindContours(grayFrame, out curContours, out hierarchy, RetrievalModes.External, ContourApproximationModes.ApproxNone);
 
-                // pass in the previous points and modify the method so that it favors points that are closer to the previous points.
-                // also make it so that points that are within the blob of said closer points are thesame as the previous points.
-                Cv2.FindContours(grayFrame, out curContours, out hierarchy, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
+                // last valid frame, 
+                // if the contours are greater than 4, we will try to find the contours again by increasing the threshold if we filter drops below 4, then use last frame where it was 4
 
-                var led = PointFromContours(grayFrame, curContours);
+                // if contours are less than 4, we will try to find the contours again by decreasing the threshold, if we filter and we get 5, then use last frame where it was 4
+                int contourCount = curContours.Count();
+                int initCount = contourCount;
+
+                (Mat, Point[][]) lastFrame = (grayFrame, curContours);
+
+                bool dontStop = true;
+
+                step = (contourCount > 4) ? step * -1 : step;
+
+                if (contourCount != 4)
+                {
+                    Mat kernel = Cv2.GetStructuringElement(MorphShapes.Ellipse, new Size(1, 1));
+
+                    if (contourCount < 4)
+                    {
+                        kernel = Cv2.GetStructuringElement(MorphShapes.Ellipse, new Size(5, 5));
+                        Cv2.MorphologyEx(grayFrame, grayFrame, MorphTypes.Dilate, kernel);
+
+                    }
+                    else
+                    {
+                        Cv2.MorphologyEx(grayFrame, grayFrame, MorphTypes.Erode, kernel);
+                    }
+
+                    Cv2.FindContours(grayFrame, out curContours, out hierarchy, RetrievalModes.External, ContourApproximationModes.ApproxNone);
+                }
+
+                var led = PointFromContours(lastFrame.Item1, lastFrame.Item2);
 
                 if (SHOWGRAY)
                 {
                     Cv2.ImShow("OG Image", frame);
+
                     Cv2.ImShow("Gray Frame", grayFrame);
+                    //Cv2.ImShow("GrayF", grayF);
+
                 }
 
                 return led;
@@ -230,42 +268,43 @@ namespace EZ_HeadTracker.Hardware
             // Step 1: Calculate areas for all contours
             List<Tuple<Point[], double>> contourAreas = new List<Tuple<Point[], double>>();
 
-            List<(Point2f, double)> pulses = new List<(Point2f, double)>();
+            List<Point2f> pulses = new List<Point2f>();
 
-            Cv2.PutText(frame, "Countours Found: " + contours.Length, new Point(0, 100), HersheyFonts.HersheyPlain, 1, Scalar.White);
+            Mat testFrame = frame.EmptyClone();
+            Cv2.CvtColor(testFrame, testFrame, ColorConversionCodes.GRAY2BGR); // Or use COLOR_GRAY2BGR if working with grayscale
 
-            foreach (var contour in contours)
-            {
-                Moments moments = Cv2.Moments(contour);
+            int initCount = contours.Length;
 
-                Point2f center = contour[0];
+            Cv2.PutText(frame, "Init Contour Count: " + contours.Length, new Point(0, 100), HersheyFonts.HersheyPlain, 1, Scalar.White);
 
-                Cv2.Circle(frame, center.R2P(), 10, Scalar.White, 2);
-            }
-
+            // take the largest contours
             if (contours.Length > 4 && prevShape != null)
             {
                 List<(float, Point[])> distance = new List<(float, Point[])>();
 
-                foreach (var contour in contours)
+                foreach (Point2f prevPoint in prevShape.Points)
                 {
-                    Moments moments = Cv2.Moments(contour);
-
-                    Point2f con = new Point2f((int)(moments.M10 / moments.M00), (int)(moments.M01 / moments.M00));
-
                     float minD = float.MaxValue;
+                    Point[] minContour = null;
 
-                    foreach (Point2f c in prevShape.Points)
+                    Point2f[] contourCenters = contours.Select(contour =>
                     {
-                        float d = (float)con.DistanceTo(c);
+                        Cv2.MinEnclosingCircle(contour, out Point2f center, out float _);
+                        return center;
+                    }).ToArray();
 
+                    foreach (var (center, contour) in contourCenters.Zip(contours, (c, cnt) => (c, cnt)))
+                    {
+                        float d = (float)prevPoint.DistanceTo(center);
                         if (d < minD)
                         {
                             minD = d;
+                            minContour = contour;
                         }
                     }
 
-                    distance.Add((minD, contour));
+                    distance.Add((minD, minContour));
+                    contours = contours.Where(c => c != minContour).ToArray();
                 }
 
                 distance.Sort((a, b) => a.Item1.CompareTo(b.Item1));
@@ -276,78 +315,64 @@ namespace EZ_HeadTracker.Hardware
 
             }
 
-            foreach (var contour in contours)
+
+            if (contours.Length != 4)
             {
-                double area = Cv2.ContourArea(contour);
-                contourAreas.Add(Tuple.Create(contour, area));
-            }
+                Scalar c;
 
-            // Step 2: Sort the contours by area (descending order)
-            contourAreas.Sort((a, b) => b.Item2.CompareTo(a.Item2));
-
-            // Step 3: Take the largest contours 
-
-            for (int i = 0; i < contourAreas.Count; i++)
-            {
-                double area = contourAreas[i].Item2;
-
-                // there might be a situation where the light so dim such that the area is 0, even tho the light has been seen, in such a case, we will just use the position of the first contour because if the area is zero, that means whatever contours were found all have thesame position.
-                if (area == 0)
+                if (contours.Length < 4)
                 {
-                    if (contourAreas[i].Item1.Length > 0)
-                    {
-                        pulses.Add((contourAreas[i].Item1[0], area));
-                    }
+                    c = Scalar.Yellow;
                 }
                 else
                 {
-                    Moments moments = Cv2.Moments(contourAreas[i].Item1);
-
-                    Point2f center = new Point2f((int)(moments.M10 / moments.M00), (int)(moments.M01 / moments.M00));
-
-                    pulses.Add((center, area));
+                    c = Scalar.Red;
                 }
-            }
 
-            // if 2 pulses are too close together remove the one with the smaller area
-
-            float minDistance = 10;
-
-            if (pulses.Count > 4)
-            {
-                int sds = 2;
-            }
-
-            for (int i = 0; i < pulses.Count; i++)
-            {
-                for (int j = i + 1; j < pulses.Count; j++)
+                foreach (var contour in contours)
                 {
-                    if (pulses[i].Item1.DistanceTo(pulses[j].Item1) < minDistance)
-                    {
-                        if (pulses[i].Item2 > pulses[j].Item2)
-                        {
-                            pulses.RemoveAt(j);
-                        }
-                        else
-                        {
-                            pulses.RemoveAt(i);
-                        }
-                    }
+                    Cv2.MinEnclosingCircle(contour, out Point2f center, out float _);
+
+                    testFrame.Circle((Point)center, 6, c, -1);
+                    frame.Circle((Point)center, 6, c, -1);
                 }
             }
 
-            for (int i = 0; i < pulses.Count; i++)
+            foreach (var contour in contours)
             {
-                Point2f p = pulses[i].Item1;
-                double area = pulses[i].Item2;
+                Point2f center;
 
-                // Mirror across the center of the frame
-                p.X = FRAMEWIDTH - p.X;  // This flips relative to frame width
+                Cv2.MinEnclosingCircle(contour, out center, out float _);
 
-                pulses[i] = (p, area);
+                pulses.Add(center);
             }
 
-            return pulses.Select(p => p.Item1).ToList();
+            Cv2.PutText(frame, "Pulse Count: " + pulses.Count, new Point(0, 150), HersheyFonts.HersheyPlain, 1, Scalar.White);
+
+            foreach (var item in pulses)
+            {
+                Cv2.Circle(testFrame, item.R2P(), 10, Scalar.Green, 2);
+                Cv2.Circle(frame, item.R2P(), 10, Scalar.White, 2);
+            }
+
+            // the below code will mirror the points such that, when your head looks/rolls left, on the screen its will also look as such
+
+            if (true)
+            {
+                for (int i = 0; i < pulses.Count; i++)
+                {
+                    Point2f p = pulses[i];
+
+                    // Mirror across the center of the frame
+                    p.X = FRAMEWIDTH - p.X;  // This flips relative to frame width
+
+                    pulses[i] = p;
+                }
+            }
+
+            //Cv2.ImShow("Test Frame", testFrame);
+            //Cv2.WaitKey(1);
+            return pulses;
         }
         private void ShowCenterTriangle(Mat displayFrame)
         {
@@ -443,7 +468,7 @@ namespace EZ_HeadTracker.Hardware
             IsTracking = false;
             if (trackingThread != null && trackingThread.IsAlive)
             {
-                trackingThread.Join();  // Wait for the thread to finish
+                trackingThread.Join(3000);  // Wait for the thread to finish
             }
         }
         public void ReleaseResources()

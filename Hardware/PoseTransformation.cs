@@ -30,9 +30,9 @@ namespace EZ_HeadTracker.Hardware
         public static Point3f[] objectPoints = new Point3f[]
         {
             new Point3f(0f, 0, -3f),    // Left
-            new Point3f(2f, -5, -6f),    // Left
+            new Point3f(2f, 5, -6f),    // Left
 
-            new Point3f(6.5f, -5f, -6f),    // Top
+            new Point3f(6.5f, 5f, -6f),    // Top
             new Point3f(8.5f, 0, -3f),      // Right
         };
 

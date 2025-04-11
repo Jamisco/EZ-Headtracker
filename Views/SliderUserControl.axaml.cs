@@ -54,9 +54,10 @@ namespace EZ_HeadTracker.Views
             InitializeComponent();
             DataContext = this;
 
-            _sliderIncrement = .1;
-            _sliderMinimum = 0;
-            _sliderMaximum = 10;
+            slider.SmallChange = _sliderIncrement;
+            slider.Minimum = _sliderMinimum;
+            slider.Maximum = _sliderMaximum;
+
 
             minusBtn.Click += MinusBtn_Click;
             plusBtn.Click += PlusBtn_Click;
