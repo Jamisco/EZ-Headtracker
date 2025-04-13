@@ -65,6 +65,8 @@ namespace EZ_HeadTracker.Views
 
 
         public TransformationType SelectedType => (TransformationType)TransformListBox.SelectedIndex;
+        public TSettings SelectedSettings => tsd.CurTSettings[SelectedType];
+        public GraphAxis SelectedAxis => DrawAxis(SelectedType);
         public int SelectedIndex => TransformListBox.SelectedIndex;
 
         TransformationSaveData tsd = new TransformationSaveData();
@@ -130,7 +132,7 @@ namespace EZ_HeadTracker.Views
 
                     Point destDegPoint = graphData.SpaceToDegree(spacePoint);
 
-                    if(!graphData.WithinActiveCurveZone(spacePoint, axis))
+                    if (!graphData.WithinActiveCurveZone(spacePoint, axis))
                     {
                         // we are within the active curve zone, so we can update the point
                         // we do this to prevent the user from dragging the point outside of the active curve zone
@@ -143,13 +145,13 @@ namespace EZ_HeadTracker.Views
                         settings.UpdateCurvePoint(draggedPointInDeg, destDegPoint);
                         draggedPointInDeg = destDegPoint;
                     }
-                    else 
+                    else
                     {
                         settings.UpdateCurvePoint(curDegPoint, destDegPoint);
                         draggedPointInDeg = destDegPoint;
                     }
 
-                    graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+                    graphData.SetCurves(settings, axis);
                     graphData.DrawCurves();
 
                     tsd.SaveSettings();
@@ -171,12 +173,12 @@ namespace EZ_HeadTracker.Views
 
             if (e.GetCurrentPoint(GraphCanvas).Properties.IsRightButtonPressed)
             {
-                if(graphData.IsPointerOnPoint(point, out Point pog))
+                if (graphData.IsPointerOnPoint(point, out Point pog))
                 {
                     Point degreePoint = graphData.SpaceToDegree(pog);
 
                     settings.RemoveCurve(degreePoint);
-                    graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+                    graphData.SetCurves(settings, axis);
                     graphData.DrawCurves();
                     tsd.SaveSettings();
 
@@ -199,7 +201,7 @@ namespace EZ_HeadTracker.Views
 
             if (success)
             {
-                graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+                graphData.SetCurves(settings, axis);
                 graphData.DrawCurves();
                 tsd.SaveSettings();
 
@@ -219,7 +221,7 @@ namespace EZ_HeadTracker.Views
 
                 _debounceTimer.Tick += (s, args) =>
                 {
-                    if(!Instantiated)
+                    if (!Instantiated)
                     {
                         // the reason we do this is because the control is not yet instantiated, so any changed to the control will trigger this function. Causing it to save the current default state not the actual settings
                         return;
@@ -229,7 +231,7 @@ namespace EZ_HeadTracker.Views
 
                     TransformationType cur = SelectedType;
                     TSettings curSettings = tsd.CurTSettings[cur];
-                    
+
                     UpdateControlSettings(curSettings);
                     tsd.UpdateShapes2Show(CanShowShape);
                     tsd.SaveSettings();
@@ -242,8 +244,6 @@ namespace EZ_HeadTracker.Views
         }
         private void TransformListBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            PitchBox.IsChecked = !PitchBox.IsChecked;
-
             if (sender is ListBox listBox && listBox.SelectedItem is ListBoxItem selectedItem)
             {
                 string selected = selectedItem.Content.ToString();
@@ -268,7 +268,7 @@ namespace EZ_HeadTracker.Views
 
                     GraphAxis axis = DrawAxis(SelectedType);
 
-                    graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+                    graphData.SetCurves(settings, axis);
                     graphData.DrawCurves();
                 }
             }
@@ -297,6 +297,8 @@ namespace EZ_HeadTracker.Views
             }
 
             graphData.DrawGraph();
+            graphData.SetCurves(SelectedSettings, SelectedAxis);
+            graphData.DrawCurves();
         }
         private void TransformationUserControl_SizeChanged(object? sender, SizeChangedEventArgs e)
         {
@@ -329,7 +331,7 @@ namespace EZ_HeadTracker.Views
 
             GraphAxis axis = DrawAxis(TransformationType.Pitch);
 
-            graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+            graphData.SetCurves(settings, axis);
             graphData.DrawCurves();
         }
 
@@ -346,29 +348,43 @@ namespace EZ_HeadTracker.Views
             for (int i = 0; i < 6; i++)
             {
                 TransformationType type = (TransformationType)i;
+                ShapeStorage shapeStorage = new ShapeStorage();
+
+                TSettings settings = tsd.CurTSettings[type];
+
                 double degree = data.DataArray[i];
-                double deadzone = tsd.CurTSettings[type].Deadzone;
 
-                degree = ApplyCalculation(type, degree);
+                degree = settings.ApplyCalculation(degree);
 
-                Shape newDegShape = CreateAngleShape(type, degree, GraphAxis.AutoSelect);
-                Shape newDeadShape = CreateDeadzoneShape(type, deadzone, GraphAxis.AutoSelect);
+                Point curvePoint = settings.RemapToCurve(degree, DrawAxis(type));
+                curvePoint = graphData.DegreeToSpace(curvePoint);
+
+                shapeStorage.rawShape = CreateAngleShape(type, degree, GraphAxis.AutoSelect);
+                shapeStorage.deadZoneShape = CreateDeadzoneShape(type, settings.Deadzone, GraphAxis.AutoSelect);
+
+                shapeStorage.curveShape = CreateCurveShape(type, curvePoint);
 
                 if (ShapesToDraw.ContainsKey(type))
                 {
-                    GraphCanvas.Children.Remove(ShapesToDraw[type].Item1);
-                    GraphCanvas.Children.Remove(ShapesToDraw[type].Item2);
+                    ShapeStorage stored = ShapesToDraw[type];
 
-                    ShapesToDraw[type] = (newDegShape, newDeadShape);
+                    GraphCanvas.Children.Remove(stored.rawShape);
+                    GraphCanvas.Children.Remove(stored.deadZoneShape);
+                    GraphCanvas.Children.Remove(stored.curveShape);
+
+
+                    ShapesToDraw[type] = shapeStorage;
                 }
                 else
                 {
-                    ShapesToDraw.Add(type, (newDegShape, newDeadShape));
+                    ShapesToDraw.Add(type, shapeStorage);
                 }
             }
         }
 
-        private Dictionary<TransformationType, (Shape, Shape)> ShapesToDraw = new();
+        // since we can draw multiple transformation types at once, we store them in a dictionary
+        // Shape Order is the rawData, Deadzone
+        private Dictionary<TransformationType, ShapeStorage> ShapesToDraw = new();
         public void DrawShapes()
         {
             foreach (var shape in ShapesToDraw)
@@ -377,15 +393,22 @@ namespace EZ_HeadTracker.Views
 
                 if (canShow)
                 {
-                    if (shape.Value.Item1 != null)
+                    ShapeStorage stored = shape.Value;
+
+                    if(stored.rawShape != null)
                     {
-                        GraphCanvas.Children.Add(shape.Value.Item1);
-                    }
-                    if (shape.Value.Item2 != null)
-                    {
-                        GraphCanvas.Children.Add(shape.Value.Item2);
+                        GraphCanvas.Children.Add(stored.rawShape);
                     }
 
+                    if (stored.deadZoneShape != null)
+                    {
+                        GraphCanvas.Children.Add(stored.deadZoneShape);
+                    }
+
+                    if (stored.curveShape != null)
+                    {
+                        GraphCanvas.Children.Add(stored.curveShape);
+                    }
                 }
             }
         }
@@ -455,13 +478,13 @@ namespace EZ_HeadTracker.Views
 
         }
 
-        private Shape CreateDeadzoneShape(TransformationType type, double degree, GraphAxis axis = GraphAxis.AutoSelect)
+        private Shape CreateDeadzoneShape(TransformationType type, double deadZone, GraphAxis axis = GraphAxis.AutoSelect)
         {
             Shape shape;
 
             Color color = TransformColors[(int)type];
 
-            double d2p = graphData.DegreeToSpace(degree) * 2;
+            double d2p = graphData.DegreeToSpace(deadZone) * 2;
 
             double shapeRadius = d2p;
 
@@ -496,7 +519,7 @@ namespace EZ_HeadTracker.Views
                     return null;// this should never run
             }
 
-            double pos = graphData.DegreeToSpace(degree);
+            double pos = graphData.DegreeToSpace(deadZone);
 
             if (!graphData.SpaceWithinGraph(pos))
             {
@@ -529,6 +552,50 @@ namespace EZ_HeadTracker.Views
 
         }
 
+        private Shape CreateCurveShape(TransformationType type, Point curvePointInSpace)
+        {
+            Shape shape;
+
+            Color color = Colors.Yellow;
+
+            double shapeRadius = 10;
+
+            switch (type)
+            {
+                case TransformationType.Pitch:
+                case TransformationType.Yaw:
+                case TransformationType.Roll:
+                    shape = new Ellipse
+                    {
+                        Width = shapeRadius,
+                        Height = shapeRadius,
+                        Fill = new SolidColorBrush(color),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = 2
+                    };
+                    break;
+                case TransformationType.X:
+                case TransformationType.Y:
+                case TransformationType.Z:
+                    shape = new Rectangle
+                    {
+                        Width = shapeRadius,
+                        Height = shapeRadius,
+                        Fill = new SolidColorBrush(color),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = 2
+                    };
+                    break;
+                default:
+                    return null;// this should never run
+            }
+
+            Canvas.SetLeft(shape, curvePointInSpace.X -shapeRadius / 2);
+            Canvas.SetTop(shape, curvePointInSpace.Y -shapeRadius / 2);
+
+            return shape;
+
+        }
 
         public GraphAxis DrawAxis(TransformationType type)
         {
@@ -717,10 +784,11 @@ namespace EZ_HeadTracker.Views
 
             [JsonInclude]
             public List<Point> CurvesPointInDegrees { get; set; } = new List<Point>();
-            public override int GetHashCode()
-            {
-                return HashCode.Combine(Multiplier, Deadzone, Invert);
-            }
+
+            // these are the start, and end points(upper and lower), these points will be present always and not modifiable.
+            // every time we draw the curve, the graph will calculate and set these points for us.
+            public List<Point> EdgeCurvesInDegress  = new List<Point>();
+
 
             public static double CurvePointRadius = 15;
 
@@ -734,7 +802,7 @@ namespace EZ_HeadTracker.Views
                 }
 
                 // So as long as the degrees arent thesame, we dont care how close there are, it is up to the graph data to determine how close they want the degrees to be
-                if(!CurvesPointInDegrees.Contains(degreePoint))
+                if (!CurvesPointInDegrees.Contains(degreePoint))
                 {
                     CurvesPointInDegrees.Add(degreePoint);
 
@@ -751,7 +819,7 @@ namespace EZ_HeadTracker.Views
 
             public bool UpdateCurvePoint(Point curDegree, Point newDegree)
             {
-                if(RemoveCurve(curDegree))
+                if (RemoveCurve(curDegree))
                 {
                     // possible error here if duplicates exists, but this shouldnt happen
                     AddCurve(newDegree);
@@ -760,7 +828,81 @@ namespace EZ_HeadTracker.Views
 
                 return false;
             }
+
+            public double ApplyCalculation(double degrees)
+            {
+                if (Invert)
+                {
+                    degrees = -degrees;
+                }
+
+                degrees = degrees * Multiplier;
+
+                // apply the deadzone
+                if (Math.Abs(degrees) < Deadzone)
+                {
+                    degrees = 0;
+                }
+
+                return degrees;
+            }
+
+            public Point RemapToCurve(double degree, GraphAxis axis)
+            {
+                Point upper = new Point();
+                Point lower = new Point();
+                Point mid = new Point();
+
+                // there will always be a start points at 0,0 and an end point at the end of the graph
+                List<Point> points = new List<Point>();
+
+                points.AddRange(EdgeCurvesInDegress);
+                points.AddRange(CurvesPointInDegrees);
+
+                // we add the start point to the list of points, 
+                // start points is not includedd in the edge curves nor is it an actual point in a settings curve because we do want it to be modified/moved
+                points.Add(new Point(0, 0));
+
+                if (axis == GraphAxis.XAxis)
+                {
+                    points = points.OrderBy(x => x.X).ToList();
+                    upper = points.FirstOrDefault(x => x.X > degree);
+                    lower = points.LastOrDefault(x => x.X < degree);
+
+                    double t = (degree - lower.X) / (upper.X - lower.X);
+                    double remappedY = lower.Y + t * (upper.Y - lower.Y);
+                    mid = new Point(degree, remappedY);
+                }
+                else
+                {
+                    points = points.OrderBy(x => x.Y).ToList();
+                    upper = points.FirstOrDefault(x => x.Y > degree);
+                    lower = points.LastOrDefault(x => x.Y < degree);
+
+                    double t = (degree - lower.Y) / (upper.Y - lower.Y);
+                    double remappedX = lower.X + t * (upper.X - lower.X);
+                    mid = new Point(remappedX, degree);
+                }
+
+                return mid;
+            }
+
+            private void CalculateEdgePoints()
+            {
+                Point start = new Point();
+
+
+            }
         }
+
+        public struct ShapeStorage
+        {
+            public Shape rawShape;
+            public Shape deadZoneShape;
+            public Shape curveShape;
+            public Shape multiplierShape;
+        }
+
         public struct GraphCanvasData
         {
             public double zoomLevel { get; set; } = 1f;
@@ -774,6 +916,9 @@ namespace EZ_HeadTracker.Views
             public bool[] Checked;
 
             public Canvas GraphCanvas;
+
+            public double GraphWidth => GraphCanvas.Bounds.Width / 2;
+            public double GraphHeight => GraphCanvas.Bounds.Height / 2;
             private Point GraphCenterPoint
             {
                 get
@@ -788,6 +933,22 @@ namespace EZ_HeadTracker.Views
                 }
             }
             private Point StartPointCurve => new Point(0, 0);
+            private Point BasicEndPointCurve
+            {
+                get
+                {
+                    // check width and height, which ever is smaller convert said space to degree and return
+
+                    double curWidth = GraphCanvas.Bounds.Width / 2;
+                    double curHeight = GraphCanvas.Bounds.Height / 2;
+
+                    double min = Math.Min(curWidth, curHeight);
+
+                    min = SpaceToDegree(min);
+
+                    return new Point(min, -min);
+                }
+            }
             private List<Point> curvePointsInDegrees { get; set; }
             private List<(Shape, Point)> drawnPoints;
             private Polyline drawnLine;
@@ -1017,7 +1178,7 @@ namespace EZ_HeadTracker.Views
                     GraphCanvas.Children.Remove(dps.Item1);
                 }
 
-                if(drawnLine != null)
+                if (drawnLine != null)
                 {
                     GraphCanvas.Children.Remove(drawnLine);
                 }
@@ -1064,7 +1225,7 @@ namespace EZ_HeadTracker.Views
                 GraphCanvas.Children.AddRange(drawnPoints.Select(x => x.Item1));
             }
 
-            public void SetCurves(List<Point> pointInDegrees, GraphAxis axis)
+            public void SetCurves(TSettings settings, GraphAxis axis)
             {
                 // zero ourselves for center, then sort the points
                 // this way we can draw the graph in a single pass
@@ -1077,9 +1238,16 @@ namespace EZ_HeadTracker.Views
                 //}
                 curvePointsInDegrees.Clear();
 
-                curvePointsInDegrees.AddRange(pointInDegrees);
+                curvePointsInDegrees.AddRange(settings.CurvesPointInDegrees);
+
+                List<Point> endCurves = new List<Point>();
 
                 curvePointsInDegrees.Add(StartPointCurve);
+                endCurves.AddRange(GetEndCurves(curvePointsInDegrees, axis));
+
+                curvePointsInDegrees.AddRange(endCurves);
+
+                settings.EdgeCurvesInDegress = endCurves;
 
                 if (axis == GraphAxis.XAxis)
                 {
@@ -1089,6 +1257,89 @@ namespace EZ_HeadTracker.Views
                 {
                     curvePointsInDegrees = curvePointsInDegrees.OrderBy(p => p.Y).ToList();
                 }
+            }
+
+            private List<Point> GetEndCurves(List<Point> cid, GraphAxis axis)
+            {
+                Point upper = default;
+                Point lower = default;
+                Point basic = BasicEndPointCurve;
+
+                List<Point> endCurves = new List<Point>();
+
+                // what this statement is doing is that it is saying if a particular half of the graph doesnt have any points, set the edge to the top corner, such that the is a 1:1 ratio between the degrees. so if pitch is 10 degrees, its curve will also be 10 degrees.
+                // if it does have points, simply make the end point go straight respective of axis
+                if (axis == GraphAxis.XAxis)
+                {
+                    upper = cid.Where(point => point.X > 0)
+                               .OrderByDescending(point => point.X)
+                               .FirstOrDefault();
+
+                    lower = cid.Where(point => point.X < 0)
+                                 .OrderBy(point => point.X)
+                                 .FirstOrDefault();
+
+                    if (upper == default)
+                    {
+                        endCurves.Add(basic);
+                    }
+                    else
+                    {
+                        double xDeg = SpaceToDegree(GraphWidth);
+                        double yDeg = upper.Y;
+                        endCurves.Add(new Point(xDeg, yDeg));
+                    }
+
+                    if (lower == default)
+                    {
+                        basic = new Point(-basic.X, basic.Y);
+
+                        endCurves.Add(basic);
+                    }
+                    else
+                    {
+                        double xDeg = SpaceToDegree(-GraphWidth);
+                        double yDeg = lower.Y;
+                        endCurves.Add(new Point(xDeg, yDeg));
+                    }
+                }
+                else
+                {
+                    // for y, the direction is flippd negative is up, positive down
+                    upper = cid.Where(point => point.Y > 0)
+                               .OrderByDescending(point => point.Y)
+                               .FirstOrDefault();
+
+                    lower = cid.Where(point => point.Y < 0)
+                               .OrderBy(point => point.Y)
+                               .FirstOrDefault();
+
+                    if (lower == default)
+                    {
+                        endCurves.Add(basic);
+                    }
+                    else
+                    {
+                        double yDeg = SpaceToDegree(-GraphHeight);
+                        double xDeg = lower.X;
+                        endCurves.Add(new Point(xDeg, yDeg));
+                    }
+
+                    if (upper == default)
+                    {
+                        basic = new Point(basic.X, -basic.Y);
+                        endCurves.Add(basic);
+                    }
+                    else
+                    {
+                        double yDeg = SpaceToDegree(GraphHeight);
+                        double xDeg = upper.X;
+
+                        endCurves.Add(new Point(xDeg, yDeg));
+                    }
+                }
+
+                return endCurves;
             }
 
             public bool IsPointerOnPoint(Point spacePoint, out Point pog)
@@ -1105,6 +1356,7 @@ namespace EZ_HeadTracker.Views
 
                 return false;
             }
+
 
             public double SpaceToDegree(double space)
             {

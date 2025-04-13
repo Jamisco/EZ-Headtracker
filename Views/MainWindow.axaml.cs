@@ -38,8 +38,8 @@ namespace EZ_HeadTracker.Views
 
             if (!Design.IsDesignMode)
             {
-                //headTracker = new HeadTracker();
-                //headTracker.HeadPoseUpdated += HeadTracker_HeadPoseUpdated;
+                headTracker = new HeadTracker();
+                headTracker.HeadPoseUpdated += HeadTracker_HeadPoseUpdated;
 
                 Loaded += MainWindow_Loaded;
                 CenterHeadBtn.Click += CenterHeadBtn_Click;
@@ -59,7 +59,6 @@ namespace EZ_HeadTracker.Views
         private void TransUserControl_PropertyChanged(object? sender, Avalonia.AvaloniaPropertyChangedEventArgs e)
         {
             TransUserControl.ZBox.IsChecked = !TransUserControl.ZBox.IsChecked;
-
         }
 
         private void TransformationPanel_PointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
