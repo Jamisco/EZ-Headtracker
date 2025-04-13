@@ -38,8 +38,8 @@ namespace EZ_HeadTracker.Views
 
             if (!Design.IsDesignMode)
             {
-                headTracker = new HeadTracker();
-                headTracker.HeadPoseUpdated += HeadTracker_HeadPoseUpdated;
+                //headTracker = new HeadTracker();
+                //headTracker.HeadPoseUpdated += HeadTracker_HeadPoseUpdated;
 
                 Loaded += MainWindow_Loaded;
                 CenterHeadBtn.Click += CenterHeadBtn_Click;

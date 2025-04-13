@@ -50,7 +50,6 @@ namespace EZ_HeadTracker.Views
             ShowY,
             ShowZ
         ];
-
         private Color[] TransformColors { get; } = new Color[]
         {
            Colors.Red,
@@ -60,6 +59,9 @@ namespace EZ_HeadTracker.Views
            Colors.Green,
            Colors.Blue,
         };
+
+        public List<Point> GraphCurvePoints = new List<Point>();
+
 
 
         public TransformationType SelectedType => (TransformationType)TransformListBox.SelectedIndex;
@@ -72,6 +74,7 @@ namespace EZ_HeadTracker.Views
             InitializeComponent();
             DataContext = new TransformationViewModel();
 
+            graphData = new GraphCanvasData(GraphCanvas);
 
             if (!Design.IsDesignMode)
             {
@@ -97,10 +100,104 @@ namespace EZ_HeadTracker.Views
                         (c as Slider).ValueChanged += Control_Changed;
                     }
                 }
+
+                GraphCanvas.PointerPressed += GraphCanvas_PointerPressed;
+                GraphCanvas.PointerMoved += GraphCanvas_PointerMoved;
             }
 
             topSlider.txtLabel.Content = "Multiplier";
             botSlider.txtLabel.Content = "Deadzone";
+        }
+
+        private Point draggedPointInDeg = default;
+        private void GraphCanvas_PointerMoved(object? sender, Avalonia.Input.PointerEventArgs e)
+        {
+            Point spacePoint = e.GetCurrentPoint(GraphCanvas).Position;
+
+            spacePoint = spacePoint.QuickRound();
+
+            if (e.GetCurrentPoint(GraphCanvas).Properties.IsLeftButtonPressed)
+            {
+                if (graphData.IsPointerOnPoint(spacePoint, out Point pog) || draggedPointInDeg != default)
+                {
+                    GraphAxis axis = DrawAxis(SelectedType);
+                    TSettings settings = tsd.CurTSettings[SelectedType];
+
+                    // the selected point in degrees
+                    Point curDegPoint = graphData.SpaceToDegree(pog);
+
+
+                    Point destDegPoint = graphData.SpaceToDegree(spacePoint);
+
+                    if(!graphData.WithinActiveCurveZone(spacePoint, axis))
+                    {
+                        // we are within the active curve zone, so we can update the point
+                        // we do this to prevent the user from dragging the point outside of the active curve zone
+                        return;
+                    }
+
+                    // the reason we do this is because when u update the point, the points new position is the same as the point you updated it to, however this updated point will not be immediately refeflected, thus when u use is pointer over point, it returns false
+                    if (draggedPointInDeg != default)
+                    {
+                        settings.UpdateCurvePoint(draggedPointInDeg, destDegPoint);
+                        draggedPointInDeg = destDegPoint;
+                    }
+                    else 
+                    {
+                        settings.UpdateCurvePoint(curDegPoint, destDegPoint);
+                        draggedPointInDeg = destDegPoint;
+                    }
+
+                    graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+                    graphData.DrawCurves();
+                }
+            }
+            else
+            {
+                draggedPointInDeg = default;
+            }
+
+        }
+
+        private void GraphCanvas_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+        {
+            Point point = e.GetCurrentPoint(GraphCanvas).Position;
+            point = point.QuickRound();
+
+            TSettings settings = tsd.CurTSettings[SelectedType];
+            GraphAxis axis = DrawAxis(SelectedType);
+
+            if (e.GetCurrentPoint(GraphCanvas).Properties.IsRightButtonPressed)
+            {
+                if(graphData.IsPointerOnPoint(point, out Point pog))
+                {
+                    Point degreePoint = graphData.SpaceToDegree(pog);
+
+                    settings.RemoveCurve(degreePoint);
+                    graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+                    graphData.DrawCurves();
+                    return;
+                }
+
+                return;
+            }
+
+            bool success = graphData.WithinActiveCurveZone(point, axis);
+            bool onPoint = graphData.IsPointerOnPoint(point, out Point p);
+
+            if (!success || onPoint)
+            {
+                return;
+            }
+
+            Point deg = graphData.SpaceToDegree(point);
+            success = settings.AddCurve(deg);
+
+            if (success)
+            {
+                graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+                graphData.DrawCurves();
+            }
         }
 
         private DispatcherTimer _debounceTimer;
@@ -130,10 +227,9 @@ namespace EZ_HeadTracker.Views
             _debounceTimer.Stop();
             _debounceTimer.Start();
         }
-
         private void TransformListBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            PitchBox.IsChecked  =  !PitchBox.IsChecked;
+            PitchBox.IsChecked = !PitchBox.IsChecked;
 
             if (sender is ListBox listBox && listBox.SelectedItem is ListBoxItem selectedItem)
             {
@@ -141,11 +237,11 @@ namespace EZ_HeadTracker.Views
                 ExpanderTxtBlock.Text = selected;
                 Expander.IsExpanded = false;
 
-                if(tsd.CurTSettings != null)
+                if (tsd.CurTSettings != null)
                 {
                     TSettings settings;
 
-                    if(!tsd.CurTSettings.TryGetValue(SelectedType, out settings))
+                    if (!tsd.CurTSettings.TryGetValue(SelectedType, out settings))
                     {
                         // if we dont have the settings for the selected type, we load the default settings
                         settings = TSettings.DefaultSettings();
@@ -160,34 +256,33 @@ namespace EZ_HeadTracker.Views
             }
         }
 
+        private GraphCanvasData graphData;
 
-
-        double zoomLevel = 1f;
         private void GraphCanvas_PointerWheelChanged(object? sender, Avalonia.Input.PointerWheelEventArgs e)
         {
             if (e.Delta.Y > 0)
             {
-                zoomLevel += .2f;
+                graphData.zoomLevel += .2f;
             }
             else if (e.Delta.Y < 0)
             {
-                zoomLevel -= .2f;
+                graphData.zoomLevel -= .2f;
             }
 
-            if(zoomLevel < .5f)
+            if (graphData.zoomLevel < .5f)
             {
-                zoomLevel = .5f;
+                graphData.zoomLevel = .5f;
             }
-            else if (zoomLevel > 5)
+            else if (graphData.zoomLevel > 5)
             {
-                zoomLevel = 5f;
+                graphData.zoomLevel = 5f;
             }
 
-            DrawGraph();
+            graphData.DrawGraph();
         }
         private void TransformationUserControl_SizeChanged(object? sender, SizeChangedEventArgs e)
         {
-            DrawGraph();
+            graphData.DrawGraph();
         }
         private void TransformationUserControl_Loaded(object? sender, RoutedEventArgs e)
         {
@@ -199,7 +294,7 @@ namespace EZ_HeadTracker.Views
         {
             int i = 0;
 
-            foreach(CheckBox c in CheckboxPanel.Children.Where(x => x is CheckBox))
+            foreach (CheckBox c in CheckboxPanel.Children.Where(x => x is CheckBox))
             {
                 c.IsChecked = tsd.Shapes2Show[i++];
             }
@@ -217,220 +312,6 @@ namespace EZ_HeadTracker.Views
         }
 
 
-        int initSpaceMultiplier = 10;
-        int spaceValue = 10;
-
-        private int smallSpacing => (int)(initSpaceMultiplier * zoomLevel);
-        private int bigSpacing => smallSpacing * 5;
-
-        private Point GraphCenterPoint
-        {
-            get
-            {
-                double curWidth = GraphCanvas.Bounds.Width;
-                double curHeight = GraphCanvas.Bounds.Height;
-
-                double cch = canvasParent.Bounds.Height;
-
-                double offsetX = curWidth / 2;
-                double offsetY = curHeight / 2;
-
-                return new Point(offsetX, offsetY);
-            }
-        }
-
-        public void DrawGraph()
-        {
-            double curWidth = GraphCanvas.Bounds.Width;
-            double curHeight = GraphCanvas.Bounds.Height;
-
-            Point offset = GraphCenterPoint;
-
-            // Set the origin of the canvas to the center
-            GraphCanvas.RenderTransform = new TranslateTransform(offset.X, offset.Y);
-
-            // Create a background rectangle to offset
-            Rectangle backgroundRect = new Rectangle
-            {
-                Width = curWidth,
-                Height = curHeight,
-                Fill = new SolidColorBrush(Colors.Black)
-            };
-
-            Canvas.SetLeft(backgroundRect, -offset.X);
-            Canvas.SetTop(backgroundRect, -offset.Y);
-
-            double r = 20;
-
-            Ellipse ellipse = new Ellipse
-            {
-                Width = r,
-                Height = r,
-                Fill = new SolidColorBrush(Colors.Red),
-                Stroke = new SolidColorBrush(Colors.White),
-                StrokeThickness = 2
-            };
-
-            Canvas.SetLeft(ellipse, -r / 2); // Center the ellipse
-            Canvas.SetTop(ellipse, -r / 2);  // Center the ellipse
-
-            Line verticalLine = new Line
-            {
-                StartPoint = new Point(0, -(curHeight / 2)),
-                EndPoint = new Point(0, curHeight / 2),
-                Stroke = new SolidColorBrush(Colors.White),
-                StrokeThickness = 5
-            };
-
-            Line horizontalLine = new Line
-            {
-                StartPoint = new Point(-(curWidth / 2), 0),
-                EndPoint = new Point(curWidth / 2, 0),
-                Stroke = new SolidColorBrush(Colors.White),
-                StrokeThickness = 5
-            };
-
-            // our goal is to create a zoom in and out effect, as user zooms in the graph max sizes decreases, as he zooms out the graph sizes increases
-            List<Line> yMarkers = new List<Line>();
-            List<Line> xMarkers = new List<Line>();
-            List<TextBlock> labels = new List<TextBlock>();
-
-            double weakStroke = .3;
-            double strongStroke = 1;
-
-            for (   int i = 0; i < curWidth / 2; i += smallSpacing)
-            {
-                // draw a line from the top of the graph to the bottom
-
-                double st = weakStroke;
-
-                if (i % bigSpacing == 0)
-                {
-                    st = strongStroke;
-                }
-                else
-                {
-                    continue;
-                }
-
-                Line topMarker = new Line
-                {
-                    StartPoint = new Point(i, -curHeight / 2),
-                    EndPoint = new Point(i, curHeight / 2),
-                    Stroke = new SolidColorBrush(Colors.White),
-                    StrokeThickness = st
-                };
-
-                Line bottomMarker = new Line
-                {
-                    StartPoint = new Point(-i, -curHeight / 2),
-                    EndPoint = new Point(-i, curHeight / 2),
-                    Stroke = new SolidColorBrush(Colors.White),
-                    StrokeThickness = st
-                };
-
-                yMarkers.Add(topMarker);
-                yMarkers.Add(bottomMarker);
-
-                if (i % bigSpacing == 0 && i != 0)
-                {
-                    double value = SpaceToDegree(i);
-
-                    TextBlock label = new TextBlock
-                    {
-                        Text = (value).ToString(),
-                        Foreground = new SolidColorBrush(Colors.White),
-                        FontSize = 12
-                    };
-
-                    Canvas.SetLeft(label, i);
-                    Canvas.SetTop(label, 0);
-                    labels.Add(label);
-
-                    TextBlock negLabel = new TextBlock
-                    {
-                        Text = (-value).ToString(),
-                        Foreground = new SolidColorBrush(Colors.White),
-                        FontSize = 12
-                    };
-
-                    Canvas.SetLeft(negLabel, -i);
-                    Canvas.SetTop(negLabel, 0);
-                    labels.Add(negLabel);
-                }
-            }
-
-            for (int i = 0; i < curHeight / 2; i += smallSpacing)
-            {
-                double st = weakStroke;
-
-                if (i % bigSpacing == 0)
-                {
-                    st = strongStroke;
-                }
-                else
-                {
-                    continue;
-                }
-
-                // draw a line from the left of the graph to the right
-                Line rightMarker = new Line
-                {
-                    StartPoint = new Point(-curWidth / 2, i),
-                    EndPoint = new Point(curWidth / 2, i),
-                    Stroke = new SolidColorBrush(Colors.White),
-                    StrokeThickness = st
-                };
-                Line leftMarker = new Line
-                {
-                    StartPoint = new Point(-curWidth / 2, -i),
-                    EndPoint = new Point(curWidth / 2, -i),
-                    Stroke = new SolidColorBrush(Colors.White),
-                    StrokeThickness = st
-                };
-
-                xMarkers.Add(rightMarker);
-                xMarkers.Add(leftMarker);
-
-                if (i % bigSpacing == 0 && i != 0)
-                {
-                    double value = SpaceToDegree(i);
-
-                    TextBlock negLabel = new TextBlock
-                    {
-                        Text = (-value).ToString(),
-                        Foreground = new SolidColorBrush(Colors.White),
-                        FontSize = 12
-                    };
-
-                    Canvas.SetLeft(negLabel, 5);
-                    Canvas.SetTop(negLabel, i - 0);
-                    labels.Add(negLabel);
-
-                    TextBlock posLabel = new TextBlock
-                    {
-                        Text = (value).ToString(),
-                        Foreground = new SolidColorBrush(Colors.White),
-                        FontSize = 12
-                    };
-
-                    Canvas.SetLeft(posLabel, 5);
-                    Canvas.SetTop(posLabel, -i - 0);
-                    labels.Add(posLabel);
-                }
-            }
-
-            GraphCanvas.Children.Clear();
-
-            GraphCanvas.Children.Add(ellipse);
-            GraphCanvas.Children.Add(backgroundRect);
-            GraphCanvas.Children.Add(verticalLine);
-            GraphCanvas.Children.Add(horizontalLine);
-            GraphCanvas.Children.AddRange(xMarkers);
-            GraphCanvas.Children.AddRange(yMarkers);
-            GraphCanvas.Children.AddRange(labels);
-        }
-
         public enum GraphAxis { XAxis, YAxis, AutoSelect }
 
         /// <summary>
@@ -440,7 +321,7 @@ namespace EZ_HeadTracker.Views
         /// <param name="degree"></param>
         public void AddShapesToDraw(TransformationData data)
         {
-            for(int i = 0; i < 6; i++)
+            for (int i = 0; i < 6; i++)
             {
                 TransformationType type = (TransformationType)i;
                 double degree = data.DataArray[i];
@@ -450,7 +331,6 @@ namespace EZ_HeadTracker.Views
 
                 Shape newDegShape = CreateAngleShape(type, degree, GraphAxis.AutoSelect);
                 Shape newDeadShape = CreateDeadzoneShape(type, deadzone, GraphAxis.AutoSelect);
-
 
                 if (ShapesToDraw.ContainsKey(type))
                 {
@@ -473,7 +353,7 @@ namespace EZ_HeadTracker.Views
             {
                 bool canShow = CanShowShape[(int)shape.Key];
 
-                if(canShow)
+                if (canShow)
                 {
                     if (shape.Value.Item1 != null)
                     {
@@ -488,7 +368,7 @@ namespace EZ_HeadTracker.Views
             }
         }
 
-        double shapeRadius = 20;
+        double shapeRadius = 15;
 
         private Shape CreateAngleShape(TransformationType type, double degree, GraphAxis axis = GraphAxis.AutoSelect)
         {
@@ -526,14 +406,14 @@ namespace EZ_HeadTracker.Views
                     return null;// this should never run
             }
 
-            double pos = DegreeToSpace(degree);
+            double pos = graphData.DegreeToSpace(degree);
 
-            if(!WithinGraph(pos))
+            if (!graphData.SpaceWithinGraph(pos))
             {
                 return null;
             }
 
-            if(axis == GraphAxis.AutoSelect)
+            if (axis == GraphAxis.AutoSelect)
             {
                 axis = DrawAxis(type);
             }
@@ -559,7 +439,7 @@ namespace EZ_HeadTracker.Views
 
             Color color = TransformColors[(int)type];
 
-            double d2p = DegreeToSpace(degree) * 2;
+            double d2p = graphData.DegreeToSpace(degree) * 2;
 
             double shapeRadius = d2p;
 
@@ -594,9 +474,9 @@ namespace EZ_HeadTracker.Views
                     return null;// this should never run
             }
 
-            double pos = DegreeToSpace(degree);
+            double pos = graphData.DegreeToSpace(degree);
 
-            if (!WithinGraph(pos))
+            if (!graphData.SpaceWithinGraph(pos))
             {
                 return null;
             }
@@ -627,33 +507,6 @@ namespace EZ_HeadTracker.Views
 
         }
 
-        private bool WithinGraph(double graphSpace)
-        {
-            double curWidth = GraphCanvas.Bounds.Width;
-            double curHeight = GraphCanvas.Bounds.Height;
-            if (graphSpace > curWidth / 2 || graphSpace < -curWidth / 2)
-            {
-                return false;
-            }
-            if (graphSpace > curHeight / 2 || graphSpace < -curHeight / 2)
-            {
-                return false;
-            }
-            return true;
-        }
-
-        double SpaceToDegree(double canvasPos)
-        {
-            // given a canvas position, convert it to a space value
-
-            return (canvasPos / bigSpacing) * spaceValue;
-        }
-        double DegreeToSpace(double canvasPos)
-        {
-            // given a canvas position, convert it to a space value
-
-            return (canvasPos / spaceValue) * bigSpacing;
-        }
 
         public GraphAxis DrawAxis(TransformationType type)
         {
@@ -671,7 +524,7 @@ namespace EZ_HeadTracker.Views
                     return GraphAxis.XAxis;
             }
         }
-   
+
         public double ApplyCalculation(TransformationType type, double degrees)
         {
             TSettings settings;
@@ -713,28 +566,6 @@ namespace EZ_HeadTracker.Views
 
             return settings;
         }
-        public struct TSettings
-        {
-            public bool Invert { get; set; }
-            public double Multiplier { get; set; }
-            public double Deadzone { get; set; }
-
-            public override int GetHashCode()
-            {
-                return HashCode.Combine(Multiplier, Deadzone, Invert);
-            }
-
-            public static TSettings DefaultSettings()
-            {
-                return new TSettings
-                {
-                    Invert = false,
-                    Multiplier = 1,
-                    Deadzone = 0
-                };
-            }
-        }
-
         public class TransformationSaveData
         {
             public static string saveDir = System.IO.Path.Combine(AppContext.BaseDirectory, "SavedData");
@@ -747,16 +578,21 @@ namespace EZ_HeadTracker.Views
                 this.CurTSettings = CurTSettings ?? new Dictionary<TransformationType, TSettings>();
                 this.Shapes2Show = Shapes2Show ?? new List<bool>() { true, false, false, false, false, false };
             }
-
             public TransformationSaveData()
             {
                 CurTSettings = new Dictionary<TransformationType, TSettings>();
                 Shapes2Show = new List<bool>() { true, false, false, false, false, false };
-            }
 
+                for (int i = 0; i < Shapes2Show.Count; i++)
+                {
+                    CurTSettings.Add((TransformationType)i, TSettings.DefaultSettings());
+                }
+
+
+            }
             public void AddSettings(TransformationType type, TSettings settings)
             {
-                if(CurTSettings == null)
+                if (CurTSettings == null)
                 {
                     CurTSettings = new Dictionary<TransformationType, TSettings>();
                 }
@@ -789,7 +625,7 @@ namespace EZ_HeadTracker.Views
                 System.IO.File.WriteAllText(filePath, json);
             }
 
-            public void  LoadSettings()
+            public void LoadSettings()
             {
                 string filePath = System.IO.Path.Combine(saveDir, "TransformSettings.json");
 
@@ -814,16 +650,510 @@ namespace EZ_HeadTracker.Views
                     this.CurTSettings = settings.CurTSettings;
                     this.Shapes2Show = settings.Shapes2Show;
 
-                    for(int i = 0; i < Shapes2Show.Count; i++)
-                    {
-                        CurTSettings.Add((TransformationType)i, TSettings.DefaultSettings());
-                    }
-
                     SaveSettings();
                 }
 
             }
         }
+        public class TSettings
+        {
+            public bool Invert { get; set; }
+            public double Multiplier { get; set; }
+            public double Deadzone { get; set; }
+
+            // used for serialization
+            public List<Point> CurvesPointInDegrees { get; private set; } = new List<Point>();
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Multiplier, Deadzone, Invert);
+            }
+            public static TSettings DefaultSettings()
+            {
+                return new TSettings
+                {
+                    Invert = false,
+                    Multiplier = 1,
+                    Deadzone = 0
+                };
+            }
+
+            public static double CurvePointRadius = 15;
+
+            // you have to be sure not to add degrees that are not within this settings zone.
+            // for example, a pitch curve values are only from if spacePoint.X > 0
+            public bool AddCurve(Point degreePoint)
+            {
+                if (CurvesPointInDegrees == null)
+                {
+                    CurvesPointInDegrees = new List<Point>();
+                }
+
+                // So as long as the degrees arent thesame, we dont care how close there are, it is up to the graph data to determine how close they want the degrees to be
+                if(!CurvesPointInDegrees.Contains(degreePoint))
+                {
+                    CurvesPointInDegrees.Add(degreePoint);
+
+                    return true;
+                }
+
+                return false;
+            }
+
+            public bool RemoveCurve(Point degreePoint)
+            {
+                return CurvesPointInDegrees.Remove(degreePoint);
+            }
+
+            public bool UpdateCurvePoint(Point curDegree, Point newDegree)
+            {
+                if(RemoveCurve(curDegree))
+                {
+                    // possible error here if duplicates exists, but this shouldnt happen
+                    AddCurve(newDegree);
+                    return true;
+                }
+
+                return false;
+            }
+        }
+        public struct GraphCanvasData
+        {
+            public double zoomLevel { get; set; } = 1f;
+
+            int initSpaceMultiplier = 10;
+            int spaceValue = 10;
+
+            private int smallSpacing => (int)(initSpaceMultiplier * zoomLevel);
+            private int bigSpacing => smallSpacing * 5;
+
+            public bool[] Checked;
+
+            public Canvas GraphCanvas;
+            private Point GraphCenterPoint
+            {
+                get
+                {
+                    double curWidth = GraphCanvas.Bounds.Width;
+                    double curHeight = GraphCanvas.Bounds.Height;
+
+                    double offsetX = curWidth / 2;
+                    double offsetY = curHeight / 2;
+
+                    return new Point(offsetX, offsetY);
+                }
+            }
+            private Point StartPointCurve => new Point(0, 0);
+            private List<Point> curvePointsInDegrees { get; set; }
+            private List<(Shape, Point)> drawnPoints;
+            private Polyline drawnLine;
+
+
+            // Whenever any modification is done to the graph, THE ENTIRE GRAPH IS REDRAWN
+            // DRAWING THE GRAPH is not a PERFORMANCE INTENSIVE OPERATION
+
+            public GraphCanvasData(Canvas GraphCanvas)
+            {
+                this.GraphCanvas = GraphCanvas;
+                curvePointsInDegrees = new List<Point>();
+                drawnPoints = new List<(Shape, Point)>();
+            }
+
+            public void DrawGraph()
+            {
+                double curWidth = GraphCanvas.Bounds.Width;
+                double curHeight = GraphCanvas.Bounds.Height;
+
+                Point offset = GraphCenterPoint;
+
+                #region Graph Stuff
+
+                // Set the origin of the canvas to the center
+                GraphCanvas.RenderTransform = new TranslateTransform(offset.X, offset.Y);
+
+                // Create a background rectangle to offset
+                Rectangle backgroundRect = new Rectangle
+                {
+                    Width = curWidth,
+                    Height = curHeight,
+                    Fill = new SolidColorBrush(Colors.Black)
+                };
+
+                Canvas.SetLeft(backgroundRect, -offset.X);
+                Canvas.SetTop(backgroundRect, -offset.Y);
+
+                double r = 20;
+
+                Ellipse ellipse = new Ellipse
+                {
+                    Width = r,
+                    Height = r,
+                    Fill = new SolidColorBrush(Colors.Red),
+                    Stroke = new SolidColorBrush(Colors.White),
+                    StrokeThickness = 2
+                };
+
+                Canvas.SetLeft(ellipse, -r / 2); // Center the ellipse
+                Canvas.SetTop(ellipse, -r / 2);  // Center the ellipse
+
+                Line verticalLine = new Line
+                {
+                    StartPoint = new Point(0, -(curHeight / 2)),
+                    EndPoint = new Point(0, curHeight / 2),
+                    Stroke = new SolidColorBrush(Colors.White),
+                    StrokeThickness = 5
+                };
+
+                Line horizontalLine = new Line
+                {
+                    StartPoint = new Point(-(curWidth / 2), 0),
+                    EndPoint = new Point(curWidth / 2, 0),
+                    Stroke = new SolidColorBrush(Colors.White),
+                    StrokeThickness = 5
+                };
+
+                // our goal is to create a zoom in and out effect, as user zooms in the graph max sizes decreases, as he zooms out the graph sizes increases
+                List<Line> yMarkers = new List<Line>();
+                List<Line> xMarkers = new List<Line>();
+                List<TextBlock> labels = new List<TextBlock>();
+
+                double weakStroke = .3;
+                double strongStroke = 1;
+
+                for (int i = 0; i < curWidth / 2; i += smallSpacing)
+                {
+                    // draw a line from the top of the graph to the bottom
+
+                    double st = weakStroke;
+
+                    if (i % bigSpacing == 0)
+                    {
+                        st = strongStroke;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    Line topMarker = new Line
+                    {
+                        StartPoint = new Point(i, -curHeight / 2),
+                        EndPoint = new Point(i, curHeight / 2),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = st
+                    };
+
+                    Line bottomMarker = new Line
+                    {
+                        StartPoint = new Point(-i, -curHeight / 2),
+                        EndPoint = new Point(-i, curHeight / 2),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = st
+                    };
+
+                    yMarkers.Add(topMarker);
+                    yMarkers.Add(bottomMarker);
+
+                    if (i % bigSpacing == 0 && i != 0)
+                    {
+                        double value = SpaceToDegree(i);
+
+                        TextBlock label = new TextBlock
+                        {
+                            Text = (value).ToString(),
+                            Foreground = new SolidColorBrush(Colors.White),
+                            FontSize = 12
+                        };
+
+                        Canvas.SetLeft(label, i);
+                        Canvas.SetTop(label, 0);
+                        labels.Add(label);
+
+                        TextBlock negLabel = new TextBlock
+                        {
+                            Text = (-value).ToString(),
+                            Foreground = new SolidColorBrush(Colors.White),
+                            FontSize = 12
+                        };
+
+                        Canvas.SetLeft(negLabel, -i);
+                        Canvas.SetTop(negLabel, 0);
+                        labels.Add(negLabel);
+                    }
+                }
+
+                for (int i = 0; i < curHeight / 2; i += smallSpacing)
+                {
+                    double st = weakStroke;
+
+                    if (i % bigSpacing == 0)
+                    {
+                        st = strongStroke;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    // draw a line from the left of the graph to the right
+                    Line rightMarker = new Line
+                    {
+                        StartPoint = new Point(-curWidth / 2, i),
+                        EndPoint = new Point(curWidth / 2, i),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = st
+                    };
+                    Line leftMarker = new Line
+                    {
+                        StartPoint = new Point(-curWidth / 2, -i),
+                        EndPoint = new Point(curWidth / 2, -i),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = st
+                    };
+
+                    xMarkers.Add(rightMarker);
+                    xMarkers.Add(leftMarker);
+
+                    if (i % bigSpacing == 0 && i != 0)
+                    {
+                        double value = SpaceToDegree(i);
+
+                        TextBlock negLabel = new TextBlock
+                        {
+                            Text = (-value).ToString(),
+                            Foreground = new SolidColorBrush(Colors.White),
+                            FontSize = 12
+                        };
+
+                        Canvas.SetLeft(negLabel, 5);
+                        Canvas.SetTop(negLabel, i - 0);
+                        labels.Add(negLabel);
+
+                        TextBlock posLabel = new TextBlock
+                        {
+                            Text = (value).ToString(),
+                            Foreground = new SolidColorBrush(Colors.White),
+                            FontSize = 12
+                        };
+
+                        Canvas.SetLeft(posLabel, 5);
+                        Canvas.SetTop(posLabel, -i - 0);
+                        labels.Add(posLabel);
+                    }
+                }
+
+
+                #endregion
+
+                GraphCanvas.Children.Clear();
+
+                GraphCanvas.Children.Add(ellipse);
+                GraphCanvas.Children.Add(backgroundRect);
+                GraphCanvas.Children.Add(verticalLine);
+                GraphCanvas.Children.Add(horizontalLine);
+                GraphCanvas.Children.AddRange(xMarkers);
+                GraphCanvas.Children.AddRange(yMarkers);
+                GraphCanvas.Children.AddRange(labels);
+
+                DrawCurves();
+
+            }
+
+            public void DrawCurves()
+            {
+                if (curvePointsInDegrees == null)
+                {
+                    return;
+                }
+
+                List<Point> p2d = new List<Point>();
+
+                foreach (var dps in drawnPoints)
+                {
+                    GraphCanvas.Children.Remove(dps.Item1);
+                }
+
+                if(drawnLine != null)
+                {
+                    GraphCanvas.Children.Remove(drawnLine);
+                }
+
+
+                drawnPoints.Clear();
+
+                foreach (Point p in curvePointsInDegrees)
+                {
+                    Point space = DegreeToSpace(p);
+
+                    if (SpaceWithinGraph(space))
+                    {
+                        Shape newShape = new Ellipse
+                        {
+                            Width = TSettings.CurvePointRadius,
+                            Height = TSettings.CurvePointRadius,
+                            Fill = new SolidColorBrush(Colors.Red),
+                            Stroke = new SolidColorBrush(Colors.White),
+                            StrokeThickness = 2
+                        };
+
+                        Canvas.SetLeft(newShape, space.X - TSettings.CurvePointRadius / 2);
+                        Canvas.SetTop(newShape, space.Y - TSettings.CurvePointRadius / 2);
+
+                        drawnPoints.Add((newShape, space));
+                        p2d.Add(space);
+                    }
+                    else
+                    {
+                        int SD = 0;
+                    }
+                }
+
+                Polyline curveLine = new Polyline
+                {
+                    Stroke = new SolidColorBrush(Colors.White),
+                    StrokeThickness = 2,
+                    Points = p2d
+                };
+
+                drawnLine = curveLine;
+                GraphCanvas.Children.Add(curveLine);
+                GraphCanvas.Children.AddRange(drawnPoints.Select(x => x.Item1));
+            }
+
+            public void SetCurves(List<Point> pointInDegrees, GraphAxis axis)
+            {
+                // zero ourselves for center, then sort the points
+                // this way we can draw the graph in a single pass
+
+                //foreach (var d in pointInDegrees)
+                //{
+                //    Point dp = DegreeToSpace(d);
+
+                //    curvePointsInDegrees.Add(dp);
+                //}
+                curvePointsInDegrees.Clear();
+
+                curvePointsInDegrees.AddRange(pointInDegrees);
+
+                curvePointsInDegrees.Add(StartPointCurve);
+
+                if (axis == GraphAxis.XAxis)
+                {
+                    curvePointsInDegrees = curvePointsInDegrees.OrderBy(p => p.X).ToList();
+                }
+                else
+                {
+                    curvePointsInDegrees = curvePointsInDegrees.OrderBy(p => p.Y).ToList();
+                }
+            }
+
+            public bool IsPointerOnPoint(Point spacePoint, out Point pog)
+            {
+                foreach (var dps in drawnPoints)
+                {
+                    if (dps.Item1.IsPointerOver)
+                    {
+                        pog = dps.Item2;
+                        return true;
+                    }
+                }
+                pog = default;
+
+                return false;
+            }
+
+            public double SpaceToDegree(double space)
+            {
+                // given a canvas position, convert it to a space value
+
+                return ((space / bigSpacing) * spaceValue).QuickRound();
+            }
+            public double DegreeToSpace(double degree)
+            {
+                // given a canvas position, convert it to a space value
+
+                return ((degree / spaceValue) * bigSpacing).QuickRound();
+            }
+
+            public Point SpaceToDegree(Point canvasPos)
+            {
+                // given a canvas position, convert it to a space value
+                return new Point(SpaceToDegree(canvasPos.X), SpaceToDegree(canvasPos.Y));
+            }
+
+            public Point DegreeToSpace(Point canvasPos)
+            {
+                // given a canvas position, convert it to a space value
+                return new Point(DegreeToSpace(canvasPos.X), DegreeToSpace(canvasPos.Y));
+            }
+
+            public bool SpaceWithinGraph(double graphSpace)
+            {
+                double curWidth = GraphCanvas.Bounds.Width;
+                double curHeight = GraphCanvas.Bounds.Height;
+                if (graphSpace > curWidth / 2 || graphSpace < -curWidth / 2)
+                {
+                    return false;
+                }
+                if (graphSpace > curHeight / 2 || graphSpace < -curHeight / 2)
+                {
+                    return false;
+                }
+                return true;
+            }
+
+            public bool SpaceWithinGraph(Point point)
+            {
+                double curWidth = GraphCanvas.Bounds.Width;
+                double curHeight = GraphCanvas.Bounds.Height;
+
+                double x = point.X;
+                double y = point.Y;
+
+                if (x > curWidth / 2 || x < -curWidth / 2)
+                {
+                    return false;
+                }
+
+                if (y > curHeight / 2 || y < -curHeight / 2)
+                {
+                    return false;
+                }
+
+
+
+                return true;
+
+
+            }
+
+            public bool WithinActiveCurveZone(Point spacePoint, GraphAxis axis)
+            {
+                if (axis == GraphAxis.XAxis)
+                {
+                    if (spacePoint.Y < 0)
+                    {
+                        return true;
+                    }
+
+                    return false;
+                }
+                else
+                {
+                    if (spacePoint.X > 0)
+                    {
+                        return true;
+                    }
+
+                    return false;
+                }
+            }
+
+            bool ContainsApprox(List<double> list, double value, double tolerance = 0.001)
+            {
+                return list.Any(x => Math.Abs(x - value) < tolerance);
+            }
+        }
     }
 }
+
 
