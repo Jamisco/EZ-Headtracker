@@ -68,7 +68,7 @@ namespace EZ_HeadTracker.Views
         public int SelectedIndex => TransformListBox.SelectedIndex;
 
         TransformationSaveData tsd = new TransformationSaveData();
-
+        private bool Instantiated = false;
         public TransformationUserControl()
         {
             InitializeComponent();
@@ -107,6 +107,7 @@ namespace EZ_HeadTracker.Views
 
             topSlider.txtLabel.Content = "Multiplier";
             botSlider.txtLabel.Content = "Deadzone";
+            Instantiated = true;
         }
 
         private Point draggedPointInDeg = default;
@@ -150,13 +151,14 @@ namespace EZ_HeadTracker.Views
 
                     graphData.SetCurves(settings.CurvesPointInDegrees, axis);
                     graphData.DrawCurves();
+
+                    tsd.SaveSettings();
                 }
             }
             else
             {
                 draggedPointInDeg = default;
             }
-
         }
 
         private void GraphCanvas_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
@@ -176,6 +178,8 @@ namespace EZ_HeadTracker.Views
                     settings.RemoveCurve(degreePoint);
                     graphData.SetCurves(settings.CurvesPointInDegrees, axis);
                     graphData.DrawCurves();
+                    tsd.SaveSettings();
+
                     return;
                 }
 
@@ -197,6 +201,8 @@ namespace EZ_HeadTracker.Views
             {
                 graphData.SetCurves(settings.CurvesPointInDegrees, axis);
                 graphData.DrawCurves();
+                tsd.SaveSettings();
+
             }
         }
 
@@ -213,11 +219,18 @@ namespace EZ_HeadTracker.Views
 
                 _debounceTimer.Tick += (s, args) =>
                 {
+                    if(!Instantiated)
+                    {
+                        // the reason we do this is because the control is not yet instantiated, so any changed to the control will trigger this function. Causing it to save the current default state not the actual settings
+                        return;
+                    }
                     _debounceTimer.Stop();
 
 
                     TransformationType cur = SelectedType;
-                    tsd.AddSettings(cur, GetCurrentSettings());
+                    TSettings curSettings = tsd.CurTSettings[cur];
+                    
+                    UpdateControlSettings(curSettings);
                     tsd.UpdateShapes2Show(CanShowShape);
                     tsd.SaveSettings();
                 };
@@ -244,7 +257,7 @@ namespace EZ_HeadTracker.Views
                     if (!tsd.CurTSettings.TryGetValue(SelectedType, out settings))
                     {
                         // if we dont have the settings for the selected type, we load the default settings
-                        settings = TSettings.DefaultSettings();
+                        settings = new TSettings();
 
                         tsd.AddSettings(SelectedType, settings);
                     }
@@ -252,6 +265,11 @@ namespace EZ_HeadTracker.Views
                     topSlider.slider.Value = settings.Multiplier;
                     botSlider.slider.Value = settings.Deadzone;
                     InvertBox.IsChecked = settings.Invert;
+
+                    GraphAxis axis = DrawAxis(SelectedType);
+
+                    graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+                    graphData.DrawCurves();
                 }
             }
         }
@@ -300,15 +318,19 @@ namespace EZ_HeadTracker.Views
             }
 
             // we load Pitch because Pitch will always be displayed FIRST!
+            TSettings settings = tsd.CurTSettings[TransformationType.Pitch];
+
             if (tsd.CurTSettings != null)
             {
-                TSettings settings = tsd.CurTSettings[TransformationType.Pitch];
-
                 topSlider.slider.Value = settings.Multiplier;
                 botSlider.slider.Value = settings.Deadzone;
                 InvertBox.IsChecked = settings.Invert;
             }
 
+            GraphAxis axis = DrawAxis(TransformationType.Pitch);
+
+            graphData.SetCurves(settings.CurvesPointInDegrees, axis);
+            graphData.DrawCurves();
         }
 
 
@@ -532,7 +554,7 @@ namespace EZ_HeadTracker.Views
             if (!tsd.CurTSettings.TryGetValue(type, out settings))
             {
                 // if we dont have the settings for the selected type, we load the default settings
-                settings = TSettings.DefaultSettings();
+                settings = new TSettings();
 
                 tsd.AddSettings(SelectedType, settings);
             }
@@ -555,14 +577,18 @@ namespace EZ_HeadTracker.Views
 
             return degrees;
         }
-        private TSettings GetCurrentSettings()
+
+        /// <summary>
+        /// Will update the control settings with the current values of the controls
+        /// Does not affect/modify the graph curves
+        /// </summary>
+        /// <param name="settings"></param>
+        /// <returns></returns>
+        private TSettings UpdateControlSettings(TSettings settings)
         {
-            TSettings settings = new TSettings
-            {
-                Invert = InvertValue,
-                Multiplier = topSlider.slider.Value,
-                Deadzone = botSlider.slider.Value
-            };
+            settings.Invert = InvertValue;
+            settings.Multiplier = topSlider.slider.Value;
+            settings.Deadzone = botSlider.slider.Value;
 
             return settings;
         }
@@ -570,7 +596,7 @@ namespace EZ_HeadTracker.Views
         {
             public static string saveDir = System.IO.Path.Combine(AppContext.BaseDirectory, "SavedData");
             public Dictionary<TransformationType, TSettings> CurTSettings { get; private set; }
-            public List<bool> Shapes2Show { get; private set; }
+            public List<bool> Shapes2Show { get; set; }
 
             [JsonConstructor]
             public TransformationSaveData(Dictionary<TransformationType, TSettings> CurTSettings, List<bool> Shapes2Show)
@@ -578,6 +604,8 @@ namespace EZ_HeadTracker.Views
                 this.CurTSettings = CurTSettings ?? new Dictionary<TransformationType, TSettings>();
                 this.Shapes2Show = Shapes2Show ?? new List<bool>() { true, false, false, false, false, false };
             }
+
+            private JsonSerializerOptions jsonOptions = new JsonSerializerOptions();
             public TransformationSaveData()
             {
                 CurTSettings = new Dictionary<TransformationType, TSettings>();
@@ -585,10 +613,11 @@ namespace EZ_HeadTracker.Views
 
                 for (int i = 0; i < Shapes2Show.Count; i++)
                 {
-                    CurTSettings.Add((TransformationType)i, TSettings.DefaultSettings());
+                    CurTSettings.Add((TransformationType)i, new TSettings());
                 }
 
-
+                jsonOptions.Converters.Add(new PointConverter());
+                jsonOptions.WriteIndented = true;
             }
             public void AddSettings(TransformationType type, TSettings settings)
             {
@@ -612,6 +641,7 @@ namespace EZ_HeadTracker.Views
                 this.Shapes2Show = showShapes.ToList();
             }
 
+
             public void SaveSettings()
             {
                 string filePath = System.IO.Path.Combine(saveDir, "TransformSettings.json");
@@ -621,7 +651,7 @@ namespace EZ_HeadTracker.Views
                     System.IO.Directory.CreateDirectory(saveDir);
                 }
 
-                string json = System.Text.Json.JsonSerializer.Serialize(this);
+                string json = System.Text.Json.JsonSerializer.Serialize(this, jsonOptions);
                 System.IO.File.WriteAllText(filePath, json);
             }
 
@@ -635,7 +665,7 @@ namespace EZ_HeadTracker.Views
                     {
                         string json = System.IO.File.ReadAllText(filePath);
 
-                        TransformationSaveData settings = System.Text.Json.JsonSerializer.Deserialize<TransformationSaveData>(json);
+                        TransformationSaveData settings = System.Text.Json.JsonSerializer.Deserialize<TransformationSaveData>(json, jsonOptions);
 
                         this.CurTSettings = settings.CurTSettings;
                         this.Shapes2Show = settings.Shapes2Show;
@@ -655,26 +685,41 @@ namespace EZ_HeadTracker.Views
 
             }
         }
+
+        /// <summary>
+        /// This is a custom converter for the Point struct to be used with System.Text.Json serialization.
+        /// </summary>
+        public class PointConverter : JsonConverter<Point>
+        {
+            public override Point Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            {
+                var json = JsonDocument.ParseValue(ref reader);
+                var x = json.RootElement.GetProperty("X").GetDouble();
+                var y = json.RootElement.GetProperty("Y").GetDouble();
+                return new Point(x, y);
+            }
+
+            public override void Write(Utf8JsonWriter writer, Point value, JsonSerializerOptions options)
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("X", value.X);
+                writer.WriteNumber("Y", value.Y);
+                writer.WriteEndObject();
+            }
+        }
+
+
         public class TSettings
         {
-            public bool Invert { get; set; }
-            public double Multiplier { get; set; }
-            public double Deadzone { get; set; }
+            public bool Invert { get; set; } = false;
+            public double Multiplier { get; set; } = 1;
+            public double Deadzone { get; set; } = 0;
 
-            // used for serialization
-            public List<Point> CurvesPointInDegrees { get; private set; } = new List<Point>();
+            [JsonInclude]
+            public List<Point> CurvesPointInDegrees { get; set; } = new List<Point>();
             public override int GetHashCode()
             {
                 return HashCode.Combine(Multiplier, Deadzone, Invert);
-            }
-            public static TSettings DefaultSettings()
-            {
-                return new TSettings
-                {
-                    Invert = false,
-                    Multiplier = 1,
-                    Deadzone = 0
-                };
             }
 
             public static double CurvePointRadius = 15;
