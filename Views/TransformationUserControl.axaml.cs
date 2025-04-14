@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using EZ_HeadTracker.ViewModels;
+using OpenCvSharp.LineDescriptor;
 using OpenCvSharp.XPhoto;
 using System;
 using System.Collections.Generic;
@@ -951,7 +952,9 @@ namespace EZ_HeadTracker.Views
             }
             private List<Point> curvePointsInDegrees { get; set; }
             private List<(Shape, Point)> drawnPoints;
-            private Polyline drawnLine;
+            private Polyline upperDrawnLine;
+            private Polyline lowerDrawnLine;
+
 
 
             // Whenever any modification is done to the graph, THE ENTIRE GRAPH IS REDRAWN
@@ -1159,11 +1162,9 @@ namespace EZ_HeadTracker.Views
                 GraphCanvas.Children.AddRange(xMarkers);
                 GraphCanvas.Children.AddRange(yMarkers);
                 GraphCanvas.Children.AddRange(labels);
-
-                DrawCurves();
-
             }
 
+            List<Shape> lines = new List<Shape>();
             public void DrawCurves()
             {
                 if (curvePointsInDegrees == null)
@@ -1171,58 +1172,156 @@ namespace EZ_HeadTracker.Views
                     return;
                 }
 
-                List<Point> p2d = new List<Point>();
+                GraphCanvasData local = this;
+
+                // these points are used to draw lines that connect the points
+
 
                 foreach (var dps in drawnPoints)
                 {
                     GraphCanvas.Children.Remove(dps.Item1);
                 }
 
-                if (drawnLine != null)
+                if (upperDrawnLine != null)
                 {
-                    GraphCanvas.Children.Remove(drawnLine);
+                    GraphCanvas.Children.Remove(upperDrawnLine);
+                    upperDrawnLine = null;
                 }
 
+                if (lowerDrawnLine != null)
+                {
+                    GraphCanvas.Children.Remove(lowerDrawnLine);
+                    lowerDrawnLine = null;
+                }
+
+                foreach (Shape line in lines)
+                {
+                    GraphCanvas.Children.Remove(line);
+                }
 
                 drawnPoints.Clear();
+                lines.Clear();
 
-                foreach (Point p in curvePointsInDegrees)
-                {
-                    Point space = DegreeToSpace(p);
+                int zeroIndex = curvePointsInDegrees.IndexOf(new Point(0, 0));
 
-                    if (SpaceWithinGraph(space))
-                    {
-                        Shape newShape = new Ellipse
-                        {
-                            Width = TSettings.CurvePointRadius,
-                            Height = TSettings.CurvePointRadius,
-                            Fill = new SolidColorBrush(Colors.Red),
-                            Stroke = new SolidColorBrush(Colors.White),
-                            StrokeThickness = 2
-                        };
+                // we divide the curve into two parts, the upper and lower part
+                // and draw them seperately, such that each part is drawn from the center (0,0) till the end
+                List<Point> upper = curvePointsInDegrees.Take(zeroIndex).ToList();
+                upper.Add(new Point(0, 0)); // add the zero point to the upper list
+                upper.Reverse();
 
-                        Canvas.SetLeft(newShape, space.X - TSettings.CurvePointRadius / 2);
-                        Canvas.SetTop(newShape, space.Y - TSettings.CurvePointRadius / 2);
+                List<Point> lower = curvePointsInDegrees.Skip(zeroIndex + 1).ToList();
+                lower.Insert(0, new Point(0, 0)); // add the zero point to the lower list
+                
+                DrawLines(upper, out var upperPoints);
+                DrawLines(lower, out var lowPoints);
 
-                        drawnPoints.Add((newShape, space));
-                        p2d.Add(space);
-                    }
-                    else
-                    {
-                        int SD = 0;
-                    }
-                }
-
-                Polyline curveLine = new Polyline
+                Polyline upperCurveLine = new Polyline
                 {
                     Stroke = new SolidColorBrush(Colors.White),
                     StrokeThickness = 2,
-                    Points = p2d
+                    Points = upperPoints
                 };
 
-                drawnLine = curveLine;
-                GraphCanvas.Children.Add(curveLine);
+                Polyline lowerCurveLine = new Polyline
+                {
+                    Stroke = new SolidColorBrush(Colors.White),
+                    StrokeThickness = 2,
+                    Points = lowPoints
+                };
+
+                upperDrawnLine = upperCurveLine;
+                lowerDrawnLine = lowerCurveLine;
+
+                GraphCanvas.Children.Add(upperCurveLine);
+                GraphCanvas.Children.Add(lowerCurveLine);
+
                 GraphCanvas.Children.AddRange(drawnPoints.Select(x => x.Item1));
+
+
+                void DrawLines(List<Point> points, out List<Point> linePoints)
+                {
+                    Point prevSpace = new Point(-2313213, -232323);
+                    linePoints = new List<Point>();
+
+                    for (int i = 0; i < points.Count; i++)
+                    {
+                        Point curDeg = points[i];
+                        Point curSpace = local.DegreeToSpace(curDeg);
+
+                        if (local.SpaceWithinGraph(curSpace))
+                        {
+                            if (i >= points.Count - 1)
+                            {
+                                break;
+                            }
+
+                            Point nextDeg = points[i + 1];
+                            Point nextSpace = local.DegreeToSpace(nextDeg);
+
+                            if (local.SpaceWithinGraph(nextSpace))
+                            {
+                                local.drawnPoints.Add((CreatePoint(curSpace), curSpace));
+                                local.drawnPoints.Add((CreatePoint(nextSpace), nextSpace));
+
+                                // since a line requires two points, 
+                                if (curSpace != prevSpace)
+                                {
+                                    linePoints.Add(curSpace);
+                                    linePoints.Add(nextSpace);
+                                }
+                                else
+                                {
+                                    linePoints.Add(nextSpace);
+                                }
+                            }
+                            else
+                            {
+                                Line newLine = new Line
+                                {
+                                    StartPoint = curSpace,
+                                    EndPoint = nextSpace,
+                                    Stroke = new SolidColorBrush(Colors.White),
+                                    StrokeThickness = 2
+                                };
+
+                                newLine.Clip = new RectangleGeometry
+                                {
+                                    Rect = new Rect(-local.GraphWidth, -local.GraphHeight, 
+                                                     local.GraphWidth * 2, local.GraphHeight * 2)
+                                };
+
+                                local.drawnPoints.Add((CreatePoint(curSpace), curSpace));
+
+                                local.lines.Add(newLine);
+                                local.GraphCanvas.Children.Add(newLine);
+
+                                break;
+                            }
+
+                            prevSpace = curSpace;
+                        }
+                    }
+
+                    linePoints = linePoints.Distinct().ToList();
+                }
+
+                Shape CreatePoint(Point curSpace)
+                {
+                    Shape newShape = new Ellipse
+                    {
+                        Width = TSettings.CurvePointRadius,
+                        Height = TSettings.CurvePointRadius,
+                        Fill = new SolidColorBrush(Colors.Red),
+                        Stroke = new SolidColorBrush(Colors.White),
+                        StrokeThickness = 2
+                    };
+
+                    Canvas.SetLeft(newShape, curSpace.X - TSettings.CurvePointRadius / 2);
+                    Canvas.SetTop(newShape, curSpace.Y - TSettings.CurvePointRadius / 2);
+
+                    return newShape;
+                }
             }
 
             public void SetCurves(TSettings settings, GraphAxis axis)
