@@ -1425,9 +1425,14 @@ namespace EZ_HeadTracker.Views
 
             public bool WithinActiveCurveZone(Point spacePoint, GraphAxis axis)
             {
+                // the reason we limit the curves to 95% of the graph is because we want to prevent the user from putting a point on/near the edge because if that happens, then the user will be unable to remove said point since it will most likely be intersecting with the end points which are not removeable
+
+                double x = GraphWidth * .95;
+                double y = GraphHeight * .95;
+
                 if (axis == GraphAxis.XAxis)
                 {
-                    if (spacePoint.Y < 0)
+                    if (spacePoint.Y < 0 && Math.Abs(spacePoint.X) < x)
                     {
                         return true;
                     }
@@ -1436,7 +1441,7 @@ namespace EZ_HeadTracker.Views
                 }
                 else
                 {
-                    if (spacePoint.X > 0)
+                    if (spacePoint.X > 0 &&  Math.Abs(spacePoint.Y) < y )
                     {
                         return true;
                     }
