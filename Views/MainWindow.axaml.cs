@@ -43,37 +43,19 @@ namespace EZ_HeadTracker.Views
                 headTracker.HeadPoseUpdated += HeadTracker_HeadPoseUpdated;
 
                 Loaded += MainWindow_Loaded;
-                CenterHeadBtn.Click += CenterHeadBtn_Click;
+
+                centerBtn.Click += (s, e) =>
+                {
+                    headTracker?.CenterFrame();
+                };
             }
 
             // on close event
 
-            MultiplierSlider.txtLabel.Content = "Multiplier";
-            MultiplierSlider.slider.Value = 1;
-
-            SmootherSlider.txtLabel.Content = "Smoothing";
-            SmootherSlider.slider.Value = 1;
-
             this.Closing += MainWindow_Closing;
         }
 
-        private void TransUserControl_PropertyChanged(object? sender, Avalonia.AvaloniaPropertyChangedEventArgs e)
-        {
-            TransUserControl.ZBox.IsChecked = !TransUserControl.ZBox.IsChecked;
-        }
-
-        private void TransformationPanel_PointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
-        {
-        }
-
-        private void CenterHeadBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-        {
-            if(headTracker != null && headTracker.IsTracking)
-            {
-                headTracker.CenterFrame();
-            }
-        }
-
+ 
         private void HeadTracker_HeadPoseUpdated(object? sender, HeadPoseEventArgs e)
         {
             // Use Dispatcher.UIThread.Invoke instead of Dispatcher.Invoke
@@ -83,15 +65,8 @@ namespace EZ_HeadTracker.Views
 
                 data.Round(2);
 
-                rotationLbl.Content = $"{data.Pitch}, {data.Yaw}, {data.Roll}";
-                translationLbl.Content = $"{data.X}, {data.Y}, {data.Z}";
-
-                double mul = MultiplierSlider.slider.Value;
-                data.Multiply((float)mul);
-
-                //double sData = e.Data.DataArray[TransUserControl.SelectedIndex];
-                TransUserControl.AddShapesToDraw(data);
-                TransUserControl.DrawShapes();
+                rotationTxt.Text = $"{data.Pitch}, {data.Yaw}, {data.Roll}";
+                translationTxt.Text = $"{data.X}, {data.Y}, {data.Z}";
 
                 DataBridge.SendData2OpenTrack(data);
             });

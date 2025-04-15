@@ -3,12 +3,14 @@
         xmlns:vm="using:EZ_HeadTracker.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="150"
         x:Class="EZ_HeadTracker.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="EZ_Headtracker"
 		xmlns:views="clr-namespace:EZ_HeadTracker.Views"
+		Width="400"
+		Height="150"
 >
 
 	<Design.DataContext>
@@ -17,59 +19,28 @@
 		<vm:MainWindowViewModel/>
 	</Design.DataContext>
 
-	<Grid Background="Gray">
-		
-		<Grid.ColumnDefinitions>
-			<ColumnDefinition Width="*" MinWidth="500" />
-			<ColumnDefinition Width="*" />
-		</Grid.ColumnDefinitions>
+	<StackPanel Background="Black">
 
+		<StackPanel Orientation="Vertical" Spacing="5">
 
-		<DockPanel x:Name="UniversalPanel" Grid.Column="0"  >
-
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,5">
+			<StackPanel Orientation="Horizontal">
+				<TextBlock Text="Rotation:" Foreground="White" FontSize="30"/>
 				
-				<StackPanel Orientation="Vertical">
-					
-					<Label x:Name="rotationLbl" Content="Rotation " />
-					<Label x:Name="translationLbl" Content="Translation "/>
-					
-				</StackPanel>
-
-				<Grid >
-					
-					<Grid.ColumnDefinitions>
-						<ColumnDefinition Width="Auto"  />
-						<ColumnDefinition Width="*"  />
-					</Grid.ColumnDefinitions>
-					
-					<Button x:Name="CenterHeadBtn" Background="Green" Content="Center Head" Grid.Column="0"/>
-
-
-					<StackPanel Grid.Column="1" Margin="0,0,10,0" HorizontalAlignment="Right" Width="300">
-						
-						<views:SliderUserControl x:Name="MultiplierSlider"/>
-						<views:SliderUserControl x:Name="SmootherSlider"/>
-						
-					</StackPanel>
-					
-				</Grid>
+				<TextBlock x:Name="rotationTxt" Text="0,0,0" VerticalAlignment="Center" Foreground="White" FontSize="20" Margin="30,0"/>
 				
-            </DockPanel>
+			</StackPanel>
 
-			<DockPanel x:Name="TransformationPanel"
-						Grid.Column="0" Grid.Row="1">
+			<StackPanel Orientation="Horizontal">
+				<TextBlock Text="Translation:" Foreground="White" FontSize="30"/>
+				<TextBlock x:Name="translationTxt" Text="0,0,0" VerticalAlignment="Center" Foreground="White" FontSize="20" Margin="30,0"/>
+			</StackPanel>
 
-				<views:TransformationUserControl x:Name="TransUserControl"/>
+			<Button x:Name="centerBtn" Content="Center Head" Margin="10" Background="White" FontSize="20" />
 
-			</DockPanel>
-			
 
-		</DockPanel>
-
-		<DockPanel Background="Green" Grid.Column="1">
-			<TextBlock Text="Right Side Text"  HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="30" />
-		</DockPanel>
+		</StackPanel>
 		
-	</Grid>
+	</StackPanel>
+
+	
 </Window>
