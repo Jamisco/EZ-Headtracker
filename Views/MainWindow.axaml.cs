@@ -12,6 +12,7 @@ namespace EZ_HeadTracker.Views
     public partial class MainWindow : Window
     {
         public static HeadTracker headTracker;
+        public static OpenTrackLauncher openTrackLauncher;
         
         public TransformationData RawData
         {
@@ -91,6 +92,8 @@ namespace EZ_HeadTracker.Views
                 //double sData = e.Data.DataArray[TransUserControl.SelectedIndex];
                 TransUserControl.AddShapesToDraw(data);
                 TransUserControl.DrawShapes();
+
+                DataBridge.SendData2OpenTrack(data);
             });
         }
 

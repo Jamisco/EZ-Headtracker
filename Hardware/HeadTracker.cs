@@ -475,11 +475,12 @@ namespace EZ_HeadTracker.Hardware
 
         public void StopTracking()
         {
+            IsTracking = false;
+
             if (trackingThread != null && trackingThread.IsAlive)
             {
                 trackingThread.Join(3000);  // Wait for the thread to finish
             }
-            IsTracking = false;
         }
         public void ReleaseResources()
         {

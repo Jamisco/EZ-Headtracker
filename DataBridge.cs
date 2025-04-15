@@ -5,14 +5,20 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
+using static EZ_HeadTracker.Hardware.HeadTracker;
 
-namespace EZ_HeadTracker.Hardware
+namespace EZ_HeadTracker
 {
     public static class DataBridge
     {
         private static UdpClient udpClient;
         private static readonly string localhost = "127.0.0.1";
         private static readonly int openTrackPort = 4242;
+
+        static DataBridge()
+        {
+            SetUDPSettings();
+        }
 
         public static void SendData(Point3f r, Point3f t)
         {
@@ -58,5 +64,33 @@ namespace EZ_HeadTracker.Hardware
             }
         }
 
+        public static void SendData2OpenTrack(TransformationData data)
+        {
+            using (UdpClient client = new UdpClient())
+            {
+                client.Connect(localhost, openTrackPort);
+
+                // Use double (not float) since OpenTrack requires 64-bit values
+                double[] transformedData =
+                {
+                    data.X,
+                    data.Y,
+                    data.Z,
+                    data.Yaw,
+                    -data.Pitch,
+                    data.Roll
+                };
+                byte[] bytes = new byte[transformedData.Length * sizeof(double)]; // Ensure correct size: 6 * 8 bytes = 48 bytes
+
+                Buffer.BlockCopy(transformedData, 0, bytes, 0, bytes.Length); // Copy the data correctly
+
+                client.Send(bytes, bytes.Length); // Send the UDP packet
+            }
+        }
+
+        public static void SetUDPSettings()
+        {
+            OpenTrackLauncher.SetUDPSettings(openTrackPort, localhost);
+        }
     }
 }
