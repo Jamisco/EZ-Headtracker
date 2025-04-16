@@ -13,13 +13,6 @@ namespace EZ_HeadTracker
     public class OpenTrackLauncher
     {
         public static string openTrackDir = @"C:\Program Files (x86)\opentrack";
-
-        public static void Begin()
-        {
-            LaunchOpenTrack();
-        }
-
-
         public static void SetUDPSettings(int port, string host)
         {
             string iniPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "opentrack", "opentrack.ini");
@@ -66,7 +59,6 @@ namespace EZ_HeadTracker
         public static Process OpenTrackProcess { get; private set; } = null;
         public static void LaunchOpenTrack()
         {
-            Launched = true;
             string exePath = Path.Combine(openTrackDir, "opentrack.exe");
 
             if (!File.Exists(exePath))
@@ -88,6 +80,7 @@ namespace EZ_HeadTracker
                         Thread.Sleep(100);
                     }
                 }
+                Launched = true;
 
                 return; // ✅ Already running
             }
@@ -135,6 +128,8 @@ namespace EZ_HeadTracker
                     OpenTrackProcess.Refresh();
                     Thread.Sleep(100);
                 }
+
+                Launched = true;
             }
         }
 

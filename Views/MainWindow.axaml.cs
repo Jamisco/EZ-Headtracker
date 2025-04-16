@@ -8,6 +8,7 @@ using Avalonia.Media;
 using static EZ_HeadTracker.Views.TransformationUserControl;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Diagnostics;
 
 namespace EZ_HeadTracker.Views
 {
@@ -42,6 +43,8 @@ namespace EZ_HeadTracker.Views
             if (!Design.IsDesignMode)
             {
                 headTracker = new HeadTracker();
+                OpenTrackLauncher.LaunchOpenTrack();
+
                 headTracker.HeadPoseUpdated += HeadTracker_HeadPoseUpdated;
 
                 Loaded += MainWindow_Loaded;
@@ -49,8 +52,8 @@ namespace EZ_HeadTracker.Views
                 PositionChanged += MainWindow_PositionChanged;
                 SizeChanged += MainWindow_SizeChanged;
 
+                Activated += MainWindow_Activated;
                 openTrackBtn.Click += UdpBtn_ClickAsync;
-                OpenTrackLauncher.Begin();
             }
 
             // on close event
@@ -58,7 +61,16 @@ namespace EZ_HeadTracker.Views
             this.Closing += MainWindow_Closing;
         }
 
+        private void MainWindow_Activated(object? sender, EventArgs e)
+        {
+            ShowOpenTrackWindow();
+        }
+
         private void MainWindow_SizeChanged(object? sender, SizeChangedEventArgs e)
+        {
+            StackWithOpenTrack();
+        }
+        private void MainWindow_PositionChanged(object? sender, PixelPointEventArgs e)
         {
             StackWithOpenTrack();
         }
@@ -75,11 +87,6 @@ namespace EZ_HeadTracker.Views
                 DataBridge.SetUDPSettings(udpSettings.Port, udpSettings.IPAddress);
                 OpenTrackLauncher.openTrackDir = udpSettings.OpenTrackFolderPath;
             }
-        }
-
-        private void MainWindow_PositionChanged(object? sender, PixelPointEventArgs e)
-        {
-            StackWithOpenTrack();
         }
 
         private const int SWP_NOZORDER = 0x0004;
@@ -99,50 +106,66 @@ namespace EZ_HeadTracker.Views
             public int Left, Top, Right, Bottom;
         }
 
+        private IntPtr MyAppHwnd
+        {
+            get
+            {
+                return GetWindowHandle(this);
+            }
+        }
+        private IntPtr OpenTrackHwnd
+        {
+            get
+            {
+                var otProcess = OpenTrackLauncher.OpenTrackProcess;
+
+                if (otProcess == null || otProcess.HasExited)
+                {
+                    OpenTrackLauncher.LaunchOpenTrack();
+
+                    otProcess = OpenTrackLauncher.OpenTrackProcess;
+                }
+
+                // the reason we pass it using out is because for 
+                return otProcess.MainWindowHandle;
+            }
+        }
+
+        /// <summary>
+        /// This will assume the window is already in the foreground
+        /// </summary>
         private void StackWithOpenTrack()
         {
-            var otProcess = OpenTrackLauncher.OpenTrackProcess;
-
-            if (otProcess == null) return;
-
-            IntPtr openTrackHwnd = otProcess.MainWindowHandle;
-
-            IntPtr myAppHwnd = GetWindowHandle(this);
-
-            RestoreOpenTrackIfMinimized(openTrackHwnd);
-
             // Get your app's position on screen
-            GetWindowRect(myAppHwnd, out var myRect);
-            GetWindowRect(openTrackHwnd, out var otRect);
+            GetWindowRect(MyAppHwnd, out var myRect);
+            GetWindowRect(OpenTrackHwnd, out var otRect);
 
             int otWidth = otRect.Right - otRect.Left;
             int otHeight = otRect.Bottom - otRect.Top;
             int offsetX = 10; // Optional spacing between windows
 
-            // Move OpenTrack to the right of your app, keeping its size
-            SetWindowPos(openTrackHwnd, IntPtr.Zero,
+            SetWindowPos(OpenTrackHwnd, IntPtr.Zero,
                 myRect.Right + offsetX, myRect.Top, 0, 0,
-                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
-
-            // Keep it docked on movement
-            this.PositionChanged += (_, __) =>
-            {
-                GetWindowRect(myAppHwnd, out myRect);
-
-                SetWindowPos(openTrackHwnd, IntPtr.Zero,
-                    myRect.Right + offsetX, myRect.Top, 0, 0,
-                    SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSIZE);
-            };
+                SWP_NOZORDER | SWP_NOACTIVATE | SW_RESTORE);
         }
 
         const int SW_RESTORE = 9;
+        const int SWP_SHOWWINDOW = 4;
+
 
         [DllImport("user32.dll")]
         static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-        void RestoreOpenTrackIfMinimized(IntPtr openTrackHwnd)
+        [DllImport("user32.dll")]
+        static extern bool SetForegroundWindow(IntPtr hWnd);
+        void ShowOpenTrackWindow()
         {
-            ShowWindow(openTrackHwnd, SW_RESTORE);
+            if (OpenTrackHwnd != default)
+            {
+                ShowWindow(OpenTrackHwnd, SW_RESTORE);
+                SetForegroundWindow(OpenTrackHwnd);
+                SetForegroundWindow(MyAppHwnd);
+            }
         }
 
         private IntPtr GetWindowHandle(Window window)
@@ -154,8 +177,6 @@ namespace EZ_HeadTracker.Views
             }
             return IntPtr.Zero;
         }
-
-
         private void CenterHeadBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             if(headTracker != null && headTracker.IsTracking)
@@ -163,7 +184,6 @@ namespace EZ_HeadTracker.Views
                 headTracker.CenterFrame();
             }
         }
-
         private void HeadTracker_HeadPoseUpdated(object? sender, HeadPoseEventArgs e)
         {
             // Use Dispatcher.UIThread.Invoke instead of Dispatcher.Invoke
@@ -181,7 +201,6 @@ namespace EZ_HeadTracker.Views
 
                 HeadPosLabel.Content = pose;
 
-
                 //double sData = e.Data.DataArray[TransUserControl.SelectedIndex];
                 TransUserControl.AddShapesToDraw(data);
                 TransUserControl.DrawShapes();
@@ -189,7 +208,6 @@ namespace EZ_HeadTracker.Views
                 DataBridge.SendData2OpenTrack(data);
             });
         }
-
         private void MainWindow_Loaded(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
 
