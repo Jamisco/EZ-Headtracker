@@ -3,7 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"  
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"  
              xmlns:vm="clr-namespace:EZ_HeadTracker.ViewModels"  
-             mc:Ignorable="d" d:DesignWidth="250"  
+             mc:Ignorable="d" d:DesignWidth="300"  
              x:Class="EZ_HeadTracker.Views.SliderUserControl"
 			 
 			 Padding="0,-10"
@@ -13,15 +13,15 @@
         <Grid VerticalAlignment="Top" MinWidth="250" MinHeight="50">  
 			
             <Grid.ColumnDefinitions>  
-                <ColumnDefinition Width="Auto"/>  
+                <ColumnDefinition Width=".25*"/>  
                 <!-- Label -->  
                 <ColumnDefinition Width=".1*"/>  
                 <!-- Minus button -->  
-                <ColumnDefinition Width=".4*"/>  
+                <ColumnDefinition Width=".3*"/>  
                 <!-- Slider -->  
                 <ColumnDefinition Width=".1*"/>  
                 <!-- Plus button -->  
-                <ColumnDefinition Width="Auto"/>  
+                <ColumnDefinition Width=".1*"/>  
                 <!-- TextBox -->  
             </Grid.ColumnDefinitions>  
 
@@ -29,7 +29,7 @@
 				   Content="Text Here" VerticalAlignment="Center" 
 				   Grid.Column="0"  
                    MinWidth="0"  
-				   FontSize="20"
+				   FontSize="15"
             />  
 
             <Button x:Name="minusBtn"  
@@ -62,7 +62,7 @@
 
             <!-- TextBox -->  
             <TextBox x:Name="txtBox"  
-                    Text="9.9"  
+                    Text="0.0"  
 					FontSize="20"
                     MinWidth="0"  
                     MinHeight="0"  

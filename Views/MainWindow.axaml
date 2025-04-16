@@ -9,6 +9,8 @@
         Icon="/Assets/avalonia-logo.ico"
         Title="EZ_Headtracker"
 		xmlns:views="clr-namespace:EZ_HeadTracker.Views"
+		Width="1000"
+		Height="600"
 >
 
 	<Design.DataContext>
@@ -20,39 +22,38 @@
 	<Grid Background="Gray">
 		
 		<Grid.ColumnDefinitions>
-			<ColumnDefinition Width="*" MinWidth="500" />
+			<ColumnDefinition Width="*" MinWidth="400" />
 			<ColumnDefinition Width="*" />
 		</Grid.ColumnDefinitions>
 
 
 		<DockPanel x:Name="UniversalPanel" Grid.Column="0"  >
 
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,5">
+            <DockPanel DockPanel.Dock="Top" Margin="0,5,0,5">
 				
-				<StackPanel Orientation="Vertical">
-					
-					<Label x:Name="rotationLbl" Content="Rotation " />
-					<Label x:Name="translationLbl" Content="Translation "/>
-					
-				</StackPanel>
-
 				<Grid >
 					
 					<Grid.ColumnDefinitions>
-						<ColumnDefinition Width="Auto"  />
+						<ColumnDefinition Width="*"  />
 						<ColumnDefinition Width="*"  />
 					</Grid.ColumnDefinitions>
+
+					<StackPanel Orientation="Horizontal" Grid.Column="0">
 					
-					<Button x:Name="CenterHeadBtn" Background="Green" Content="Center Head" Grid.Column="0"/>
+						<Button x:Name="CenterHeadBtn" Background="Green" Content="Center Head" Grid.Column="0"/>
 
+						<Button x:Name="openTrackBtn" Background="Green" Content="OpenTrack Settings" Grid.Column="0" Margin="10,0" />
 
-					<StackPanel Grid.Column="1" Margin="0,0,10,0" HorizontalAlignment="Right" Width="300">
+						<Label x:Name="HeadPosLabel" Content="Head Position" Grid.Column="0" Margin="10,0" />
 						
-						<views:SliderUserControl x:Name="MultiplierSlider"/>
-						<views:SliderUserControl x:Name="SmootherSlider"/>
 						
 					</StackPanel>
-					
+
+				
+
+
+
+
 				</Grid>
 				
             </DockPanel>

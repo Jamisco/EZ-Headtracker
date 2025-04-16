@@ -32,25 +32,7 @@ namespace EZ_HeadTracker.Views
 
         public Dictionary<TransformationType, TransformationSaveData> TransformationSettings = new();
         private bool InvertValue => InvertBox.IsChecked == true;
-        private bool ShowPitch => PitchBox.IsChecked == true;
-        private bool ShowYaw => YawBox.IsChecked == true;
-        private bool ShowRoll => RollBox.IsChecked == true;
-        private bool ShowX => XBox.IsChecked == true;
-        private bool ShowY => YBox.IsChecked == true;
-        private bool ShowZ => ZBox.IsChecked == true;
 
-        /// <summary>
-        /// Convienient array to check which shapes to show
-        /// </summary>
-        private bool[] CanShowShape =>
-        [
-            ShowPitch,
-            ShowYaw,
-            ShowRoll,
-            ShowX,
-            ShowY,
-            ShowZ
-        ];
         private Color[] TransformColors { get; } = new Color[]
         {
            Colors.Red,
@@ -92,16 +74,9 @@ namespace EZ_HeadTracker.Views
                 botSlider.slider.ValueChanged += Control_Changed;
                 InvertBox.IsCheckedChanged += Control_Changed;
 
-                foreach (Control c in CheckboxPanel.Children.Where(e => e is Control))
+                foreach (Control c in TopPanel.Children.Where(e => e is Slider))
                 {
-                    if (c is CheckBox)
-                    {
-                        (c as CheckBox).IsCheckedChanged += Control_Changed;
-                    }
-                    else if (c is Slider)
-                    {
-                        (c as Slider).ValueChanged += Control_Changed;
-                    }
+                    (c as Slider).ValueChanged += Control_Changed;
                 }
 
                 GraphCanvas.PointerPressed += GraphCanvas_PointerPressed;
@@ -109,7 +84,9 @@ namespace EZ_HeadTracker.Views
             }
 
             topSlider.txtLabel.Content = "Multiplier";
+            topSlider.slider.Value = 1f;
             botSlider.txtLabel.Content = "Deadzone";
+            botSlider.slider.Value = 0f;
             Instantiated = true;
         }
 
@@ -234,7 +211,6 @@ namespace EZ_HeadTracker.Views
                     TSettings curSettings = tsd.CurTSettings[cur];
 
                     UpdateControlSettings(curSettings);
-                    tsd.UpdateShapes2Show(CanShowShape);
                     tsd.SaveSettings();
                 };
             }
@@ -281,20 +257,20 @@ namespace EZ_HeadTracker.Views
         {
             if (e.Delta.Y > 0)
             {
-                graphData.zoomLevel += .2f;
+                graphData.zoomLevel += GraphCanvasData.increment;
             }
             else if (e.Delta.Y < 0)
             {
-                graphData.zoomLevel -= .2f;
+                graphData.zoomLevel -= GraphCanvasData.increment;
             }
 
-            if (graphData.zoomLevel < .5f)
+            if (graphData.zoomLevel < GraphCanvasData.minZoom)
             {
-                graphData.zoomLevel = .5f;
+                graphData.zoomLevel = GraphCanvasData.minZoom;
             }
-            else if (graphData.zoomLevel > 5)
+            else if (graphData.zoomLevel > GraphCanvasData.maxZoom)
             {
-                graphData.zoomLevel = 5f;
+                graphData.zoomLevel = GraphCanvasData.maxZoom;
             }
 
             graphData.DrawGraph();
@@ -304,21 +280,17 @@ namespace EZ_HeadTracker.Views
         private void TransformationUserControl_SizeChanged(object? sender, SizeChangedEventArgs e)
         {
             graphData.DrawGraph();
+            graphData.SetCurves(SelectedSettings, SelectedAxis);
+            graphData.DrawCurves();
         }
         private void TransformationUserControl_Loaded(object? sender, RoutedEventArgs e)
         {
             tsd.LoadSettings();
             InitLoadSettings();
         }
-
         private void InitLoadSettings()
         {
             int i = 0;
-
-            foreach (CheckBox c in CheckboxPanel.Children.Where(x => x is CheckBox))
-            {
-                c.IsChecked = tsd.Shapes2Show[i++];
-            }
 
             // we load Pitch because Pitch will always be displayed FIRST!
             TSettings settings = tsd.CurTSettings[TransformationType.Pitch];
@@ -335,7 +307,6 @@ namespace EZ_HeadTracker.Views
             graphData.SetCurves(settings, axis);
             graphData.DrawCurves();
         }
-
 
         public enum GraphAxis { XAxis, YAxis, AutoSelect }
 
@@ -355,7 +326,6 @@ namespace EZ_HeadTracker.Views
 
                 double degree = data.DataArray[i];
 
-                degree = settings.ApplyCalculation(degree);
 
                 Point curvePoint = settings.RemapToCurve(degree, DrawAxis(type));
                 curvePoint = graphData.DegreeToSpace(curvePoint);
@@ -373,7 +343,6 @@ namespace EZ_HeadTracker.Views
                     GraphCanvas.Children.Remove(stored.deadZoneShape);
                     GraphCanvas.Children.Remove(stored.curveShape);
 
-
                     ShapesToDraw[type] = shapeStorage;
                 }
                 else
@@ -390,9 +359,7 @@ namespace EZ_HeadTracker.Views
         {
             foreach (var shape in ShapesToDraw)
             {
-                bool canShow = CanShowShape[(int)shape.Key];
-
-                if (canShow)
+                if (SelectedType == shape.Key)
                 {
                     ShapeStorage stored = shape.Value;
 
@@ -615,35 +582,28 @@ namespace EZ_HeadTracker.Views
             }
         }
 
-        public double ApplyCalculation(TransformationType type, double degrees)
+        public void ApplyCalculation(TransformationData input, out TransformationData output)
         {
             TSettings settings;
 
-            if (!tsd.CurTSettings.TryGetValue(type, out settings))
+            double[] newData = new double[6] {0, 0, 0, 0, 0, 0 };
+            for (int i = 0; i < 6; i++)
             {
-                // if we dont have the settings for the selected type, we load the default settings
-                settings = new TSettings();
+                TransformationType type = (TransformationType)i;
+                GraphAxis axis = DrawAxis(type);
 
-                tsd.AddSettings(SelectedType, settings);
+                if (tsd.CurTSettings.TryGetValue(type, out settings))
+                {
+                    double curDegree = input.DataArray[i];
+
+                    curDegree = settings.ApplyCalculation(curDegree, axis);
+
+                    newData[i] = curDegree;
+
+                }
             }
 
-            double multiplier = settings.Multiplier;
-            double deadzone = settings.Deadzone;
-
-            if (settings.Invert)
-            {
-                degrees = -degrees;
-            }
-
-            degrees = degrees * multiplier;
-
-            // apply the deadzone
-            if (Math.Abs(degrees) < deadzone)
-            {
-                degrees = 0;
-            }
-
-            return degrees;
+            output = new TransformationData(newData);
         }
 
         /// <summary>
@@ -664,22 +624,19 @@ namespace EZ_HeadTracker.Views
         {
             public static string saveDir = System.IO.Path.Combine(AppContext.BaseDirectory, "SavedData");
             public Dictionary<TransformationType, TSettings> CurTSettings { get; private set; }
-            public List<bool> Shapes2Show { get; set; }
 
             [JsonConstructor]
             public TransformationSaveData(Dictionary<TransformationType, TSettings> CurTSettings, List<bool> Shapes2Show)
             {
                 this.CurTSettings = CurTSettings ?? new Dictionary<TransformationType, TSettings>();
-                this.Shapes2Show = Shapes2Show ?? new List<bool>() { true, false, false, false, false, false };
             }
 
             private JsonSerializerOptions jsonOptions = new JsonSerializerOptions();
             public TransformationSaveData()
             {
                 CurTSettings = new Dictionary<TransformationType, TSettings>();
-                Shapes2Show = new List<bool>() { true, false, false, false, false, false };
 
-                for (int i = 0; i < Shapes2Show.Count; i++)
+                for (int i = 0; i < 6; i++)
                 {
                     CurTSettings.Add((TransformationType)i, new TSettings());
                 }
@@ -702,11 +659,6 @@ namespace EZ_HeadTracker.Views
                 {
                     CurTSettings.Add(type, settings);
                 }
-            }
-
-            public void UpdateShapes2Show(bool[] showShapes)
-            {
-                this.Shapes2Show = showShapes.ToList();
             }
 
 
@@ -736,7 +688,6 @@ namespace EZ_HeadTracker.Views
                         TransformationSaveData settings = System.Text.Json.JsonSerializer.Deserialize<TransformationSaveData>(json, jsonOptions);
 
                         this.CurTSettings = settings.CurTSettings;
-                        this.Shapes2Show = settings.Shapes2Show;
                     }
                 }
                 catch (Exception ex)
@@ -746,7 +697,6 @@ namespace EZ_HeadTracker.Views
                     TransformationSaveData settings = new TransformationSaveData();
 
                     this.CurTSettings = settings.CurTSettings;
-                    this.Shapes2Show = settings.Shapes2Show;
 
                     SaveSettings();
                 }
@@ -830,24 +780,42 @@ namespace EZ_HeadTracker.Views
                 return false;
             }
 
-            public double ApplyCalculation(double degrees)
+            public double ApplyCalculation(double degrees, GraphAxis axis)
             {
                 if (Invert)
                 {
                     degrees = -degrees;
                 }
 
-                degrees = degrees * Multiplier;
-
-                // apply the deadzone
                 if (Math.Abs(degrees) < Deadzone)
                 {
-                    degrees = 0;
+                    return 0;
                 }
 
-                return degrees;
+                Point curveDegPoint = RemapToCurve(degrees, axis);
+
+                double curvePoint = 0;
+
+                if (axis == GraphAxis.XAxis)
+                {
+                    curvePoint = curveDegPoint.Y;
+                }
+                else
+                {
+                    curvePoint = curveDegPoint.X;
+                }
+
+                curvePoint = curvePoint * Multiplier;
+
+                return curvePoint;
             }
 
+            /// <summary>
+            /// The point returned is in degrees
+            /// </summary>
+            /// <param name="degree"></param>
+            /// <param name="axis"></param>
+            /// <returns></returns>
             public Point RemapToCurve(double degree, GraphAxis axis)
             {
                 Point upper = new Point();
@@ -887,15 +855,7 @@ namespace EZ_HeadTracker.Views
 
                 return mid;
             }
-
-            private void CalculateEdgePoints()
-            {
-                Point start = new Point();
-
-
-            }
         }
-
         public struct ShapeStorage
         {
             public Shape rawShape;
@@ -903,13 +863,33 @@ namespace EZ_HeadTracker.Views
             public Shape curveShape;
             public Shape multiplierShape;
         }
-
         public struct GraphCanvasData
         {
-            public double zoomLevel { get; set; } = 1f;
+            public static double minZoom = .5f;
+            public static double maxZoom = 2f;
+            public static double increment = .1f;
+            public double zoomLevel { get; set; } = .5f;
 
             int initSpaceMultiplier = 10;
-            int spaceValue = 10;
+            int spaceValue
+            {
+                // essentially what we are doing here is saying when as we zoom in, change the spacing to 10, and subsequently, as we zoom out change the spacing to 20.
+                // we do this so the user doesnt have to zoom in/out to see a wide range of values, and also, if the spacing is too small, it clutters the graph with too many lines drawn. For example, if u graph with is 300, with a spacing of 10, then we have to draw 30 lines, where as if the spacing was 20, we only have to draw 15 lines
+                get
+                {
+                    double zoomLength = maxZoom - minZoom;
+                    double zoomPercent = (zoomLevel - minZoom) / zoomLength;
+
+                    if (zoomPercent <= .3f)
+                    {
+                        return 20;
+                    }
+                    else
+                    {
+                        return 10;
+                    }
+                }
+            }
 
             private int smallSpacing => (int)(initSpaceMultiplier * zoomLevel);
             private int bigSpacing => smallSpacing * 5;

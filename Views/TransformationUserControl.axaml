@@ -10,7 +10,7 @@
 		
 		<DockPanel DockPanel.Dock="Top">
 			
-			<StackPanel Orientation="Vertical" DockPanel.Dock="Top" ZIndex="1">
+			<StackPanel x:Name="TopPanel" Orientation="Vertical" DockPanel.Dock="Top" ZIndex="1">
 			
 				<Grid>
 					<Grid.ColumnDefinitions>
@@ -28,7 +28,7 @@
 							Grid.Row="0"
 							Grid.Column="0"
 							Width="120"
-							Margin="0,5">
+							Margin="5,5">
 						
 						<Expander
 								x:Name="Expander"
@@ -58,7 +58,7 @@
 					</Canvas>
 					<!-- Expander on the left -->
 
-					<StackPanel Grid.Row="0" Grid.Column="1" Orientation="Vertical" Margin="10,5,0,0">  
+					<StackPanel Grid.Row="0" Grid.Column="1" Orientation="Vertical" Margin="20,5,10,0">  
 						<TextBlock FontSize="15" Text="Invert" HorizontalAlignment="Center" />  
 						<CheckBox HorizontalAlignment="Center" Margin="0,5" x:Name="InvertBox"/>  
 					</StackPanel>
@@ -74,57 +74,9 @@
 					</StackPanel>
 				</Grid>
 
-			</StackPanel>
+			</StackPanel>		
 			
-			<Grid x:Name="CheckboxPanel" Margin="0,5,0,0" DockPanel.Dock="Top">
-					<Grid.ColumnDefinitions>
-						<ColumnDefinition Width="*"/>
-						<ColumnDefinition Width="*"/>
-						<ColumnDefinition Width="*"/>
-						<ColumnDefinition Width="*"/>
-						<ColumnDefinition Width="*"/>
-						<ColumnDefinition Width="*"/>
-					</Grid.ColumnDefinitions>
-
-					<!-- Pitch -->
-					<StackPanel Grid.Column="0" Orientation="Vertical" Margin="10,5,0,0">
-						<TextBlock FontSize="15" Text="Pitch" HorizontalAlignment="Center" />
-						<CheckBox HorizontalAlignment="Center" Margin="0,5" x:Name="PitchBox" />
-					</StackPanel>
-
-					<!-- Yaw -->
-					<StackPanel Grid.Column="1" Orientation="Vertical" Margin="10,5,0,0">
-						<TextBlock FontSize="15" Text="Yaw" HorizontalAlignment="Center" />
-						<CheckBox HorizontalAlignment="Center" Margin="0,5" x:Name="YawBox"/>
-					</StackPanel>
-
-					<!-- Roll -->
-					<StackPanel Grid.Column="2" Orientation="Vertical" Margin="10,5,0,0">
-						<TextBlock FontSize="15" Text="Roll" HorizontalAlignment="Center" />
-						<CheckBox HorizontalAlignment="Center" Margin="0,5" x:Name="RollBox"/>
-					</StackPanel>
-
-					<!-- X -->
-					<StackPanel Grid.Column="3" Orientation="Vertical" Margin="10,5,0,0">
-						<TextBlock FontSize="15" Text="X" HorizontalAlignment="Center" />
-						<CheckBox HorizontalAlignment="Center" Margin="0,5" x:Name="XBox"/>
-					</StackPanel>
-
-					<!-- Y -->
-					<StackPanel Grid.Column="4" Orientation="Vertical" Margin="10,5,0,0">
-						<TextBlock FontSize="15" Text="Y" HorizontalAlignment="Center" />
-						<CheckBox HorizontalAlignment="Center" Margin="0,5" x:Name="YBox"/>
-					</StackPanel>
-
-					<!-- Z -->
-					<StackPanel Grid.Column="5" Orientation="Vertical" Margin="10,5,0,0">
-						<TextBlock FontSize="15" Text="Z" HorizontalAlignment="Center" />
-						<CheckBox HorizontalAlignment="Center" Margin="0,5" x:Name="ZBox"/>
-					</StackPanel>
-			
-				</Grid>
-
-			<DockPanel x:Name="canvasParent" DockPanel.Dock="Top" Margin="0,5,0,0">
+			<DockPanel x:Name="canvasParent" DockPanel.Dock="Top" Margin="0,20,0,0">
 
 				<Canvas x:Name="GraphCanvas" Background="YellowGreen" >
 

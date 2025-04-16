@@ -5,15 +5,14 @@ using System.IO;
 using System.Linq;
 using System.Security.Principal;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace EZ_HeadTracker
 {
     public class OpenTrackLauncher
     {
-        static string openTrackDir = @"C:\Program Files (x86)\opentrack";
-        static string presetDir = Path.Combine(openTrackDir, "modules", "presets");
-        static string presetPath = Path.Combine(presetDir, "myPreset.ini");
+        public static string openTrackDir = @"C:\Program Files (x86)\opentrack";
 
         public static void Begin()
         {
@@ -63,14 +62,34 @@ namespace EZ_HeadTracker
         }
 
         public static bool Launched { get; private set; } = false;
+
+        public static Process OpenTrackProcess { get; private set; } = null;
         public static void LaunchOpenTrack()
         {
             Launched = true;
             string exePath = Path.Combine(openTrackDir, "opentrack.exe");
 
             if (!File.Exists(exePath))
-            {
                 return;
+
+            // Try to find an existing OpenTrack process
+            var existingProcesses = Process.GetProcessesByName("opentrack");
+            if (existingProcesses.Length > 0)
+            {
+                OpenTrackProcess = existingProcesses[0];
+
+                // Ensure it has a valid window handle
+                if (OpenTrackProcess.MainWindowHandle == IntPtr.Zero)
+                {
+                    OpenTrackProcess.WaitForInputIdle();
+                    while (OpenTrackProcess.MainWindowHandle == IntPtr.Zero)
+                    {
+                        OpenTrackProcess.Refresh();
+                        Thread.Sleep(100);
+                    }
+                }
+
+                return; // ✅ Already running
             }
 
             // Check if we're already elevated
@@ -90,10 +109,11 @@ namespace EZ_HeadTracker
 
                 try
                 {
-                    Process.Start(psi);
+                    OpenTrackProcess = Process.Start(psi);
                 }
                 catch
                 {
+                    // Optional: notify user
                 }
             }
             else
@@ -107,8 +127,16 @@ namespace EZ_HeadTracker
                     CreateNoWindow = false
                 };
 
-                Process.Start(psi);
+                OpenTrackProcess = Process.Start(psi);
+                OpenTrackProcess.WaitForInputIdle();
+
+                while (OpenTrackProcess.MainWindowHandle == IntPtr.Zero)
+                {
+                    OpenTrackProcess.Refresh();
+                    Thread.Sleep(100);
+                }
             }
         }
+
     }
 }

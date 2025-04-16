@@ -12,8 +12,8 @@ namespace EZ_HeadTracker
     public static class DataBridge
     {
         private static UdpClient udpClient;
-        private static readonly string localhost = "127.0.0.1";
-        private static readonly int openTrackPort = 4242;
+        private static string localhost = "127.0.0.1";
+        private static int openTrackPort = 4242;
 
         static DataBridge()
         {
@@ -88,6 +88,11 @@ namespace EZ_HeadTracker
             }
         }
 
+        public static void SetUDPSettings(int port, string ip)
+        {
+            openTrackPort = port;
+            localhost = ip;
+        }
         public static void SetUDPSettings()
         {
             OpenTrackLauncher.SetUDPSettings(openTrackPort, localhost);

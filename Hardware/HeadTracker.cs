@@ -57,6 +57,21 @@ namespace EZ_HeadTracker.Hardware
                 Z = translation.Z;
             }
 
+            public TransformationData(double[] data)
+            {
+                if (data.Length != 6)
+                {
+                    throw new ArgumentException("Data array must have exactly 6 elements.");
+                }
+
+                Pitch = (float)data[0];
+                Yaw = (float)data[1];
+                Roll = (float)data[2];
+                X = (float)data[3];
+                Y = (float)data[4];
+                Z = (float)data[5];
+            }
+
             public void Round(int d)
             {
                 Pitch = (float)Math.Round(Pitch, d);
